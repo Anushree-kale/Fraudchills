@@ -49,11 +49,11 @@ function StatPill({
   const display = `${Math.round(n)}${suffix}`;
 
   return (
-    <div className="flex min-h-[120px] flex-col items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--cream)] px-3 py-5 transition-colors hover:border-[var(--gold)] sm:min-h-[132px] sm:px-4 sm:py-6">
-      <span className="mb-2 text-[clamp(1.5rem,4vw,2.25rem)] font-bold leading-none text-[var(--gold)]">
+    <div className="flex min-h-[6.75rem] flex-col items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--cream)] px-2 py-4 transition-colors hover:border-[var(--gold)] sm:min-h-[7.5rem] sm:px-3 sm:py-5 md:min-h-[8rem]">
+      <span className="mb-1.5 text-[clamp(1.35rem,3.8vw,2.1rem)] font-bold leading-none text-[var(--gold)] sm:mb-2">
         {display}
       </span>
-      <span className="text-center text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--black)] sm:text-[10px] sm:tracking-[2px]">
+      <span className="px-0.5 text-center text-[9px] font-bold uppercase leading-tight tracking-[0.12em] text-[var(--black)] sm:text-[10px] sm:tracking-[0.18em]">
         {label}
       </span>
     </div>
@@ -65,40 +65,36 @@ export default function HeroSection() {
   const { data: session } = useSession();
 
   return (
-    <section
-      className="border-b border-[var(--border)] bg-[var(--cream)]"
-      aria-labelledby="hero-heading"
-    >
-      <div className="mx-auto max-w-[1200px] px-5 pb-16 pt-[88px] sm:px-8 md:pb-24 lg:pb-28">
-        <div className="flex flex-col gap-12 lg:flex-row lg:items-center lg:justify-between lg:gap-10 xl:gap-14">
-          {/* Left: copy, CTAs, stats — normal document flow */}
-          <div className="min-w-0 flex-1 lg:max-w-[min(100%,520px)] xl:max-w-[540px]">
-            <p className="mb-6 text-[10px] font-bold uppercase tracking-[0.28em] text-[var(--black)] sm:mb-8 sm:tracking-[4px]">
+    <section className="border-b border-[var(--border)] bg-[var(--cream)]" aria-labelledby="hero-heading">
+      <div className="mx-auto max-w-[var(--content-max)] px-[var(--page-gutter)] pb-[clamp(2.5rem,8vw,5rem)] pt-[calc(var(--nav-offset)+clamp(1.25rem,4vw,2.25rem))]">
+        <div className="flex flex-col gap-10 lg:flex-row lg:items-center lg:justify-between lg:gap-12 xl:gap-16">
+          <div className="min-w-0 flex-1 lg:max-w-[min(100%,32rem)] xl:max-w-[36rem]">
+            <p className="mb-5 text-[10px] font-bold uppercase tracking-[0.22em] text-[var(--black)] sm:mb-6 sm:tracking-[0.28em]">
               CASE FILED • CONSUMER PROTECTION DIVISION
             </p>
 
             <h1
               id="hero-heading"
-              className="font-bebas text-[clamp(3.25rem,11vw,6.75rem)] leading-[0.88] tracking-[-0.02em] text-[var(--black)] sm:text-[clamp(3.5rem,9vw,7rem)]"
+              className="font-bebas text-[clamp(3rem,10vw,6.25rem)] leading-[0.9] tracking-[-0.02em] text-[var(--black)]"
             >
               FRAUDCHILLS
             </h1>
 
-            <p className="mt-6 max-w-[38rem] text-base leading-relaxed text-[#444] sm:mt-8 sm:text-[17px] md:text-lg">
+            <p className="mt-5 max-w-[38rem] text-[clamp(0.95rem,2.2vw,1.125rem)] leading-[1.65] text-[#444] sm:mt-6 md:text-lg md:leading-relaxed">
               Stop e-commerce fraud before it hits. Real-time ML detection with verified complaints,
               traceable timelines, and accountable resolution.
             </p>
 
-            <div className="mt-8 flex flex-wrap gap-3 sm:mt-10 sm:gap-4">
+            <div className="mt-7 flex flex-wrap gap-3 sm:mt-9 sm:gap-4">
               <Link
                 href={session ? "/complaints/new" : "/auth/signin?callbackUrl=%2Fcomplaints%2Fnew"}
-                className="inline-flex items-center justify-center bg-black px-8 py-4 text-[10px] font-bold uppercase tracking-[2px] text-white transition-colors hover:bg-[#222] sm:px-10 sm:py-5 sm:text-[11px]"
+                className="inline-flex min-h-[2.75rem] min-w-[10rem] items-center justify-center bg-black px-8 py-3 text-[10px] font-bold uppercase tracking-[0.14em] text-white transition-colors hover:bg-[#222] sm:min-h-[3rem] sm:px-10 sm:text-[11px]"
               >
                 REPORT NOW
               </Link>
               <Link
                 href="/analytics"
-                className="inline-flex items-center justify-center gap-2 border border-black bg-transparent px-8 py-4 text-[10px] font-bold uppercase tracking-[2px] text-black transition-colors hover:bg-[var(--surface)] sm:px-10 sm:py-5 sm:text-[11px]"
+                className="inline-flex min-h-[2.75rem] items-center justify-center gap-2 border border-black bg-transparent px-8 py-3 text-[10px] font-bold uppercase tracking-[0.14em] text-black transition-colors hover:bg-[var(--surface)] sm:min-h-[3rem] sm:px-10 sm:text-[11px]"
               >
                 FRAUD ANALYTICS
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
@@ -109,7 +105,7 @@ export default function HeroSection() {
             </div>
 
             <div
-              className="mt-10 grid w-full max-w-[520px] grid-cols-3 gap-3 sm:mt-12 sm:gap-4 lg:max-w-none xl:max-w-[560px]"
+              className="mt-9 grid w-full max-w-[28rem] grid-cols-3 gap-2.5 sm:mt-11 sm:max-w-[32rem] sm:gap-3 md:gap-4 lg:max-w-[36rem]"
               ref={statsRef.ref}
             >
               <StatPill label="COMPLAINTS" target={10} suffix="K+" active={statsRef.inView} />
@@ -118,20 +114,20 @@ export default function HeroSection() {
             </div>
           </div>
 
-          {/* Right: image only, contained in column — no absolute overlap with left */}
-          <div className="w-full shrink-0 lg:w-[min(46%,440px)] xl:w-[min(48%,480px)]">
-            <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-sm">
-              <Image
-                src="/images/hero-visual.png"
-                alt="Fraud detection — shield and verification graphic"
-                className="h-auto w-full object-cover object-center"
-                width={960}
-                height={720}
-                sizes="(max-width: 1024px) 100vw, 480px"
-                priority
-              />
+          <div className="w-full shrink-0 lg:w-[min(44%,26rem)] xl:w-[min(46%,28rem)]">
+            <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-[0_4px_24px_rgba(15,15,15,0.06)]">
+              <div className="relative aspect-[4/3] w-full overflow-hidden">
+                <Image
+                  src="/images/hero-visual.png"
+                  alt="Fraud detection — shield and verification graphic"
+                  className="object-cover object-center"
+                  fill
+                  sizes="(max-width: 1024px) 100vw, 420px"
+                  priority
+                />
+              </div>
             </div>
-            <p className="mt-3 text-center text-[9px] font-bold uppercase tracking-[0.2em] text-[var(--muted)] lg:text-left">
+            <p className="mt-3 text-center text-[9px] font-bold uppercase tracking-[0.2em] text-[var(--muted)] lg:mt-4 lg:text-left">
               Securing legal integrity
             </p>
           </div>

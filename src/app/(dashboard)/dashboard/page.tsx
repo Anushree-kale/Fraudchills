@@ -1,213 +1,594 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
-import { apiFetchJson } from "@/lib/api";
+import Link from "next/link";
+import {
+  fetchDashboardSummary,
+  fetchActiveCases,
+  fetchFraudCategories,
+  type DashboardSummary,
+  type ActiveCase,
+  type ActiveCasesPage,
+  type FraudCategory,
+} from "@/lib/api";
 
-type ComplaintRow = {
-  id: string;
-  caseNumber?: string;
-  case_number?: string;
-  details: string;
-  amount: number;
-  status: string;
-  brandName?: string;
-  brand_name?: string;
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function riskColor(score: number) {
+  if (score >= 70) return "var(--danger)";
+  if (score >= 40) return "var(--gold)";
+  return "var(--success)";
+}
+
+function statusColor(status: string) {
+  const s = status.toUpperCase();
+  if (s === "RESOLVED") return { bg: "rgba(82,142,87,0.12)", color: "var(--success)" };
+  if (s === "REVIEW") return { bg: "rgba(201,168,76,0.12)", color: "var(--gold)" };
+  return { bg: "rgba(15,15,15,0.06)", color: "var(--muted)" };
+}
+
+const TYPE_LABELS: Record<string, string> = {
+  SELLER_FRAUD: "Seller Fraud",
+  PHISHING: "Phishing",
+  UNAUTHORIZED_CHARGE: "Unauth. Charge",
+  FAKE_PRODUCT: "Fake Product",
 };
 
+// ── Sub-components ────────────────────────────────────────────────────────────
+
+function SummaryCard({
+  label,
+  value,
+  sub,
+  accent,
+}: {
+  label: string;
+  value: string | number;
+  sub?: string;
+  accent?: string;
+}) {
+  return (
+    <div
+      style={{
+        background: "var(--cream)",
+        border: "1px solid var(--border)",
+        borderRadius: "var(--radius)",
+        padding: "1.25rem 1.5rem",
+      }}
+    >
+      <p
+        style={{
+          fontSize: "0.68rem",
+          fontWeight: 700,
+          letterSpacing: "0.18em",
+          textTransform: "uppercase",
+          color: "var(--muted)",
+          marginBottom: "0.5rem",
+        }}
+      >
+        {label}
+      </p>
+      <p
+        style={{
+          fontFamily: "var(--font-bebas), sans-serif",
+          fontSize: "clamp(1.75rem,4vw,2.5rem)",
+          color: accent ?? "var(--black)",
+          letterSpacing: "-0.01em",
+          lineHeight: 1,
+        }}
+      >
+        {value}
+      </p>
+      {sub && (
+        <p style={{ fontSize: "0.78rem", color: "var(--muted)", marginTop: "0.35rem" }}>{sub}</p>
+      )}
+    </div>
+  );
+}
+
+// ── Main Page ─────────────────────────────────────────────────────────────────
+
+const PAGE_SIZE = 10;
+
 export default function DashboardPage() {
-  const { data: session, status } = useSession();
-  const router = useRouter();
-  const [stats, setStats] = useState({ active: 4, resolved: 11, atRisk: 84000, riskScore: 73 });
-  const [complaints, setComplaints] = useState<ComplaintRow[]>([
-    { id: "1", caseNumber: "#FC-2841", details: "Unauthorized charge — Flipkart seller", amount: 12400, status: "REVIEW" },
-    { id: "2", caseNumber: "#FC-2839", details: "Fake product listing — Meesho", amount: 3200, status: "OPEN" },
-    { id: "3", caseNumber: "#FC-2830", details: "Non-delivery of goods — Amazon", amount: 7899, status: "OPEN" },
-    { id: "4", caseNumber: "#FC-2811", details: "Refund withheld — Myntra order", amount: 1499, status: "RESOLVED" },
-  ]);
-  const [loading, setLoading] = useState(false); // Using mock data to match UI exactly for now
+  const { data: session } = useSession();
+  const email = session?.user?.email;
+  const displayName = session?.user?.name ?? "User";
+
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [casesPage, setCasesPage] = useState<ActiveCasesPage | null>(null);
+  const [categories, setCategories] = useState<FraudCategory[]>([]);
+  const [page, setPage] = useState(1);
+  const [statusFilter, setStatus] = useState("");
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [casesLoading, setCasesLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // initial load — summary + categories
+  useEffect(() => {
+    if (!email) return;
+    (async () => {
+      try {
+        const [sum, cats] = await Promise.all([
+          fetchDashboardSummary(email),
+          fetchFraudCategories(email),
+        ]);
+        setSummary(sum);
+        setCategories(cats);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to load dashboard.");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [email]);
+
+  // cases load — re-runs on filter/page change
+  const loadCases = useCallback(async () => {
+    if (!email) return;
+    setCasesLoading(true);
+    try {
+      const result = await fetchActiveCases(email, {
+        page,
+        pageSize: PAGE_SIZE,
+        status: statusFilter || undefined,
+        q: search || undefined,
+      });
+      setCasesPage(result);
+    } catch {
+      // swallow — show empty
+    } finally {
+      setCasesLoading(false);
+    }
+  }, [email, page, statusFilter, search]);
 
   useEffect(() => {
-    if (status === "unauthenticated") {
-      router.replace("/auth/signin?callbackUrl=%2Fdashboard");
-    }
-  }, [status, router]);
+    loadCases();
+  }, [loadCases]);
 
-  if (status === "loading" || status === "unauthenticated") {
+  if (!email) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <div className="loading-text">
-          <span className="pulsing-dot"></span>
-          Loading...
-        </div>
+      <div
+        style={{
+          minHeight: "60vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "var(--muted)",
+        }}
+      >
+        <p>Sign in to access your dashboard.</p>
       </div>
     );
   }
 
-  const statCards = [
-    { label: "ACTIVE CASES", value: stats.active, sub: "+1 this week", subColor: "text-[var(--success)]" },
-    { label: "RESOLVED", value: stats.resolved, sub: "92% success rate", subColor: "text-[var(--success)]" },
-    { label: "AMOUNT AT RISK", value: `₹${(stats.atRisk/1000).toFixed(0)}K`, sub: "2 flagged high priority", subColor: "text-[var(--danger)]", mono: true },
-    { label: "RISK SCORE", value: stats.riskScore, sub: "ML detection score" },
-  ];
+  const totalPages = casesPage ? Math.ceil(casesPage.total / PAGE_SIZE) : 1;
 
   return (
-    <div className="space-y-12">
+    <div
+      style={{
+        maxWidth: "var(--content-max)",
+        margin: "0 auto",
+        padding: "clamp(1.5rem,4vw,2.5rem) var(--page-gutter)",
+        paddingTop: "calc(var(--nav-offset) + clamp(1.5rem,4vw,2rem))",
+      }}
+    >
       {/* Header */}
-      <div>
-        <p className="text-[10px] font-medium tracking-[3px] text-[var(--muted)] uppercase mb-2">
-          CONSUMER PROTECTION DIVISION · CASE PORTAL
-        </p>
-        <h1 className="text-[54px] font-bebas text-[var(--black)] leading-[0.9]">
-          MY DASHBOARD
-        </h1>
-      </div>
-
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-[14px]">
-        {statCards.map((card, i) => (
-          <div 
-            key={i} 
-            className="bg-[var(--surface)] border border-[var(--border)] rounded-[4px] p-6"
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          marginBottom: "2rem",
+          flexWrap: "wrap",
+          gap: "1rem",
+        }}
+      >
+        <div>
+          <p
+            style={{
+              fontSize: "0.68rem",
+              fontWeight: 700,
+              letterSpacing: "0.22em",
+              textTransform: "uppercase",
+              color: "var(--muted)",
+              marginBottom: "0.35rem",
+            }}
           >
-            <p className="text-[10px] tracking-[2px] text-[var(--muted)] font-medium uppercase mb-3">
-              {card.label}
-            </p>
-            <p className={`text-[42px] font-bebas text-[var(--gold)] leading-none mb-1 ${card.mono ? 'font-mono' : ''}`}>
-              {loading ? "—" : card.value}
-            </p>
-            <p className={`text-[11px] font-medium ${card.subColor || 'text-[var(--muted)]'}`}>
-              {card.sub}
-            </p>
-          </div>
-        ))}
+            WELCOME BACK
+          </p>
+          <h1
+            style={{
+              fontFamily: "var(--font-bebas), sans-serif",
+              fontSize: "clamp(1.75rem,4vw,3rem)",
+              color: "var(--black)",
+              letterSpacing: "-0.01em",
+              lineHeight: 1,
+            }}
+          >
+            {displayName}
+          </h1>
+        </div>
+        <Link
+          href="/complaints/new"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "0.7rem 1.4rem",
+            background: "var(--black)",
+            color: "#fff",
+            fontSize: "0.75rem",
+            fontWeight: 700,
+            letterSpacing: "0.12em",
+            textTransform: "uppercase",
+            borderRadius: 2,
+            whiteSpace: "nowrap",
+          }}
+        >
+          + FILE COMPLAINT
+        </Link>
       </div>
 
-      {/* Bottom Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-[14px]">
-        {/* Left Col: Case Records Table & Button */}
-        <div className="lg:col-span-2 flex flex-col gap-[14px]">
-          <div className="bg-[var(--surface)] border border-[var(--border)] rounded-[4px] overflow-hidden">
-            <div className="flex items-center justify-between px-8 py-6 border-b border-[var(--border)]">
-              <h2 className="text-[12px] font-bold tracking-[2px] text-[var(--black)] uppercase">
-                ACTIVE CASE RECORDS
-              </h2>
-              <Link
-                href="/complaints/new"
-                className="text-[10px] font-bold tracking-[2px] text-[var(--gold)] uppercase hover:opacity-80 transition-opacity"
+      {error && (
+        <div
+          style={{
+            background: "rgba(203,78,78,0.08)",
+            border: "1px solid var(--danger)",
+            borderRadius: "var(--radius)",
+            padding: "0.75rem 1rem",
+            color: "var(--danger)",
+            fontSize: "0.88rem",
+            marginBottom: "1.5rem",
+          }}
+        >
+          {error}
+        </div>
+      )}
+
+      {/* Summary Cards */}
+      {loading ? (
+        <div style={{ color: "var(--muted)", padding: "2rem 0" }}>Loading summary…</div>
+      ) : (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+            gap: "1rem",
+            marginBottom: "2rem",
+          }}
+        >
+          <SummaryCard
+            label="Active Cases"
+            value={summary?.activeCases ?? 0}
+            sub="open + in review"
+            accent="var(--gold)"
+          />
+          <SummaryCard
+            label="Resolved"
+            value={summary?.resolvedCases ?? 0}
+            sub="all time"
+            accent="var(--success)"
+          />
+          <SummaryCard
+            label="Amount at Risk"
+            value={`₹${(summary?.amountAtRisk ?? 0).toLocaleString()}`}
+            sub="across open cases"
+            accent="var(--danger)"
+          />
+          <SummaryCard
+            label="Risk Score"
+            value={summary?.riskScore ?? 0}
+            sub={
+              (summary?.riskScore ?? 0) >= 70
+                ? "HIGH"
+                : (summary?.riskScore ?? 0) >= 40
+                  ? "MEDIUM"
+                  : "LOW"
+            }
+            accent={riskColor(summary?.riskScore ?? 0)}
+          />
+        </div>
+      )}
+
+      {/* Fraud Category Pills */}
+      {categories.length > 0 && (
+        <div
+          style={{
+            display: "flex",
+            gap: "0.6rem",
+            flexWrap: "wrap",
+            marginBottom: "1.75rem",
+          }}
+        >
+          {categories.map((cat) => (
+            <div
+              key={cat.type}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "0.3rem 0.75rem",
+                border: "1px solid var(--border)",
+                borderRadius: 99,
+                fontSize: "0.72rem",
+                fontWeight: 700,
+                letterSpacing: "0.1em",
+                color: "var(--black)",
+              }}
+            >
+              <span
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: "50%",
+                  background: "var(--gold)",
+                  display: "inline-block",
+                }}
+              />
+              {TYPE_LABELS[cat.type] ?? cat.type}{" "}
+              <span style={{ color: "var(--muted)" }}>{cat.percentage.toFixed(0)}%</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Cases Table */}
+      <div
+        style={{
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: "var(--radius)",
+          overflow: "hidden",
+        }}
+      >
+        {/* Table header + filters */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            padding: "1rem 1.5rem",
+            borderBottom: "1px solid var(--border)",
+            flexWrap: "wrap",
+            gap: "0.75rem",
+          }}
+        >
+          <p
+            style={{
+              fontSize: "0.7rem",
+              fontWeight: 700,
+              letterSpacing: "0.18em",
+              textTransform: "uppercase",
+              color: "var(--muted)",
+            }}
+          >
+            MY CASES
+            {casesPage && (
+              <span style={{ marginLeft: 8, color: "var(--black)" }}>
+                ({casesPage.total})
+              </span>
+            )}
+          </p>
+
+          <div style={{ display: "flex", gap: "0.6rem", alignItems: "center", flexWrap: "wrap" }}>
+            {/* Search */}
+            <input
+              type="text"
+              placeholder="Search cases…"
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+              style={{
+                padding: "0.4rem 0.75rem",
+                fontSize: "0.8rem",
+                border: "1px solid var(--border)",
+                borderRadius: 4,
+                background: "var(--cream)",
+                color: "var(--black)",
+                outline: "none",
+                width: 160,
+              }}
+            />
+
+            {/* Status filter */}
+            {["", "OPEN", "REVIEW", "RESOLVED"].map((s) => (
+              <button
+                key={s || "ALL"}
+                onClick={() => { setStatus(s); setPage(1); }}
+                style={{
+                  fontSize: "0.68rem",
+                  fontWeight: 700,
+                  letterSpacing: "0.1em",
+                  textTransform: "uppercase",
+                  padding: "0.3rem 0.65rem",
+                  border: "1px solid",
+                  borderColor: statusFilter === s ? "var(--gold)" : "var(--border)",
+                  background: statusFilter === s ? "var(--gold-dim)" : "transparent",
+                  color: statusFilter === s ? "var(--gold)" : "var(--muted)",
+                  borderRadius: 4,
+                  cursor: "pointer",
+                }}
               >
-                + FILE NEW
-              </Link>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <tbody className="divide-y divide-[var(--border)]">
-                  {loading ? (
-                    <tr>
-                      <td colSpan={4} className="px-8 py-20 text-center">
-                        <div className="loading-text justify-center">
-                          <span className="pulsing-dot"></span>
-                          Loading records...
-                        </div>
-                      </td>
-                    </tr>
-                  ) : complaints.length === 0 ? (
-                    <tr>
-                      <td colSpan={4} className="px-8 py-20 text-center text-[13px] text-[var(--muted)]">
-                        No active case records found.
-                      </td>
-                    </tr>
-                  ) : (
-                    complaints.map((c) => {
-                       const caseId = c.caseNumber || c.case_number || "FC-XXXX";
-                       const status = (c.status || "OPEN").toUpperCase();
-                       let statusStyle = "bg-[#fcf3d7] text-[#c9a84c]"; // OPEN
-                       if (status === "REVIEW") statusStyle = "bg-[#fbeaea] text-[#cb4e4e]";
-                       if (status === "RESOLVED") statusStyle = "bg-[#eaf3eb] text-[#528e57]";
-
-                       return (
-                        <tr key={c.id} className="hover:bg-[rgba(0,0,0,0.01)] transition-colors">
-                          <td className="pl-8 pr-4 py-5 text-[11px] font-mono text-[var(--muted)] whitespace-nowrap">{caseId}</td>
-                          <td className="px-4 py-5 text-[13px] font-medium text-[var(--black)] truncate max-w-[280px]">{c.details}</td>
-                          <td className="px-4 py-5 text-[12px] font-mono font-bold text-right text-[var(--black)]">₹{c.amount.toLocaleString()}</td>
-                          <td className="pl-4 pr-8 py-5 text-right">
-                            <span className={`inline-block text-[10px] tracking-[1px] font-bold px-[12px] py-[4px] rounded-[2px] ${statusStyle}`}>
-                              {status}
-                            </span>
-                          </td>
-                        </tr>
-                       );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-            {/* Table Footer */}
-            <div className="px-8 py-6 bg-[var(--surface)]">
-              <Link href="/complaints/new" className="inline-flex items-center justify-center bg-[var(--black)] text-[var(--cream)] px-8 py-3 text-[11px] font-bold tracking-[2px] uppercase transition-colors hover:bg-[#2A2A2A] rounded-[2px]">
-                FILE NEW RECORD →
-              </Link>
-            </div>
+                {s || "ALL"}
+              </button>
+            ))}
           </div>
         </div>
 
-        {/* Right Col: Extra Panels */}
-        <div className="space-y-[14px]">
-          {/* Fraud By Category */}
-          <div className="bg-[var(--surface)] border border-[var(--border)] rounded-[4px] p-8">
-            <h2 className="text-[12px] font-bold tracking-[2px] text-[var(--black)] uppercase mb-8">
-              FRAUD BY CATEGORY
-            </h2>
-            <div className="space-y-5">
-              {[
-                { label: "Non-delivery", val: 78 },
-                { label: "Fake seller", val: 61 },
-                { label: "Unauth charge", val: 44 },
-                { label: "Refund issue", val: 29 },
-              ].map((item) => (
-                <div key={item.label} className="flex items-center text-[12px]">
-                  <span className="w-24 text-[var(--muted)] font-medium">{item.label}</span>
-                  <div className="flex-1 h-1.5 bg-[var(--border)] rounded-full overflow-hidden mx-4">
-                    <div className="h-full bg-[var(--gold)]" style={{ width: `${item.val}%` }} />
-                  </div>
-                  <span className="font-mono text-[var(--black)] font-bold">{item.val}%</span>
-                </div>
-              ))}
-            </div>
+        {/* Table body */}
+        {casesLoading ? (
+          <div style={{ padding: "2rem 1.5rem", color: "var(--muted)", fontSize: "0.9rem" }}>
+            Loading cases…
           </div>
+        ) : !casesPage || casesPage.items.length === 0 ? (
+          <div
+            style={{
+              padding: "3rem 1.5rem",
+              textAlign: "center",
+              color: "var(--muted)",
+              fontSize: "0.9rem",
+            }}
+          >
+            No cases found.{" "}
+            <Link href="/complaints/new" style={{ color: "var(--gold)", fontWeight: 600 }}>
+              File your first complaint →
+            </Link>
+          </div>
+        ) : (
+          <>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                  {["Case", "Title", "Amount", "Status", ""].map((h) => (
+                    <th
+                      key={h}
+                      style={{
+                        padding: "0.65rem 1.25rem",
+                        textAlign: "left",
+                        fontSize: "0.65rem",
+                        fontWeight: 700,
+                        letterSpacing: "0.16em",
+                        textTransform: "uppercase",
+                        color: "var(--muted)",
+                      }}
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {casesPage.items.map((c: ActiveCase) => {
+                  const sc = statusColor(c.status);
+                  return (
+                    <tr
+                      key={c.caseId}
+                      style={{ borderBottom: "1px solid var(--border)" }}
+                    >
+                      <td
+                        style={{
+                          padding: "0.85rem 1.25rem",
+                          fontFamily: "var(--font-mono), monospace",
+                          fontSize: "0.78rem",
+                          color: "var(--muted)",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {c.caseId}
+                      </td>
+                      <td
+                        style={{
+                          padding: "0.85rem 1.25rem",
+                          fontSize: "0.88rem",
+                          fontWeight: 600,
+                          color: "var(--black)",
+                          maxWidth: 260,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {c.title}
+                      </td>
+                      <td
+                        style={{
+                          padding: "0.85rem 1.25rem",
+                          fontSize: "0.85rem",
+                          color: "var(--black)",
+                          fontWeight: 600,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {c.amount > 0 ? `₹${c.amount.toLocaleString()}` : "—"}
+                      </td>
+                      <td style={{ padding: "0.85rem 1.25rem" }}>
+                        <span
+                          style={{
+                            display: "inline-block",
+                            padding: "0.2rem 0.6rem",
+                            borderRadius: 99,
+                            fontSize: "0.68rem",
+                            fontWeight: 700,
+                            letterSpacing: "0.1em",
+                            textTransform: "uppercase",
+                            background: sc.bg,
+                            color: sc.color,
+                          }}
+                        >
+                          {c.status}
+                        </span>
+                      </td>
+                      <td style={{ padding: "0.85rem 1.25rem" }}>
+                        <Link
+                          href={`/complaints/${c.caseId}`}
+                          style={{
+                            fontSize: "0.72rem",
+                            fontWeight: 700,
+                            letterSpacing: "0.1em",
+                            textTransform: "uppercase",
+                            color: "var(--gold)",
+                          }}
+                        >
+                          VIEW →
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
 
-          {/* Recent Activity */}
-          <div className="bg-[var(--surface)] border border-[var(--border)] rounded-[4px] p-8">
-            <h2 className="text-[12px] font-bold tracking-[2px] text-[var(--black)] uppercase mb-8">
-              RECENT ACTIVITY
-            </h2>
-            <div className="space-y-8">
-              {[
-                { time: "TODAY · 11:42 AM", msg: "#FC-2841 flagged for urgent review by ML engine", active: true },
-                { time: "TODAY · 09:15 AM", msg: "#FC-2811 marked resolved — refund", active: false },
-              ].map((evt, i) => (
-                <div key={i} className="flex gap-4">
-                  <div className="flex-shrink-0">
-                    <div className={`w-[24px] h-[24px] rounded-full flex items-center justify-center border ${evt.active ? 'border-[var(--gold)] bg-[var(--gold-dim)] text-[var(--gold)]' : 'border-[var(--success)] bg-[#eaf3eb] text-[var(--success)]'}`}>
-                       {evt.active ? (
-                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                       ) : (
-                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
-                       )}
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-[12px] font-medium text-[var(--black)] leading-[1.5] mb-1.5">{evt.msg}</p>
-                    <p className="text-[9px] font-bold tracking-[1.5px] text-[var(--muted)] uppercase">{evt.time}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  alignItems: "center",
+                  gap: "0.5rem",
+                  padding: "0.75rem 1.25rem",
+                  borderTop: "1px solid var(--border)",
+                }}
+              >
+                <button
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  style={{
+                    padding: "0.3rem 0.65rem",
+                    fontSize: "0.75rem",
+                    border: "1px solid var(--border)",
+                    borderRadius: 4,
+                    background: "transparent",
+                    color: page === 1 ? "var(--muted)" : "var(--black)",
+                    cursor: page === 1 ? "default" : "pointer",
+                  }}
+                >
+                  ← Prev
+                </button>
+                <span style={{ fontSize: "0.78rem", color: "var(--muted)" }}>
+                  {page} / {totalPages}
+                </span>
+                <button
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page === totalPages}
+                  style={{
+                    padding: "0.3rem 0.65rem",
+                    fontSize: "0.75rem",
+                    border: "1px solid var(--border)",
+                    borderRadius: 4,
+                    background: "transparent",
+                    color: page === totalPages ? "var(--muted)" : "var(--black)",
+                    cursor: page === totalPages ? "default" : "pointer",
+                  }}
+                >
+                  Next →
+                </button>
+              </div>
+            )}
+          </>
+        )}
       </div>
     </div>
   );

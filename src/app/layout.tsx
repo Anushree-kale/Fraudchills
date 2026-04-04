@@ -26,6 +26,13 @@ export const metadata: Metadata = {
   description: "Verified complaints, analytics, and brand accountability for e-commerce.",
 };
 
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover" as const,
+  themeColor: "#FAF7F2",
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{

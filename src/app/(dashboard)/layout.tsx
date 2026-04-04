@@ -2,13 +2,7 @@
 
 import React from "react";
 import Sidebar from "@/components/Sidebar";
-import { 
-  LayoutDashboard, 
-  BarChart3, 
-  Search, 
-  FileText, 
-  PlusCircle 
-} from "lucide-react";
+import { LayoutDashboard, BarChart3, Search, FileText, PlusCircle } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -28,26 +22,29 @@ export default function DashboardLayout({
   ];
 
   return (
-    <div className="min-h-screen bg-[var(--cream)]">
+    <div className="min-h-screen min-h-[100dvh] bg-[var(--cream)]">
       <Sidebar />
-      <main className="md:ml-[220px] pt-[52px] px-10 py-9 pb-[100px] md:pb-12 bg-[var(--cream)] min-h-screen">
-        {children}
+      <main className="mx-auto w-full max-w-[min(100rem,100%)] px-[var(--page-gutter)] pb-[max(5.5rem,env(safe-area-inset-bottom,0px))] pt-[var(--nav-offset)] md:ml-[var(--sidebar-w)] md:pb-10">
+        <div className="py-6 md:py-8 lg:py-10">{children}</div>
       </main>
 
-      {/* Mobile Tab Bar */}
-      <nav className="fixed bottom-0 left-0 w-full h-[64px] bg-[var(--cream)] border-t border-[var(--border)] z-50 flex items-center justify-around md:hidden px-4 shadow-sm">
+      <nav
+        className="fixed bottom-0 left-0 z-50 flex h-[calc(var(--mobile-tab-h)+env(safe-area-inset-bottom,0px))] w-full items-center justify-around border-t border-[var(--border)] bg-[var(--cream)]/95 px-2 pb-[env(safe-area-inset-bottom,0px)] backdrop-blur-md md:hidden"
+        aria-label="Mobile navigation"
+      >
         {mobileTabs.map((tab) => {
           const isActive = pathname === tab.href;
           const Icon = tab.icon;
           return (
-            <Link 
-              key={tab.name} 
+            <Link
+              key={tab.name}
               href={tab.href}
-              className={`flex items-center justify-center w-12 h-12 transition-colors ${
+              className={`flex h-12 w-12 items-center justify-center rounded-lg transition-colors ${
                 isActive ? "text-[var(--gold)]" : "text-[var(--muted)] hover:text-[var(--black)]"
               }`}
+              aria-label={tab.name}
             >
-              <Icon size={24} />
+              <Icon size={22} strokeWidth={isActive ? 2.25 : 2} />
             </Link>
           );
         })}

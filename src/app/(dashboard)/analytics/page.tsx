@@ -1,274 +1,718 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import {
-  BarChart3,
-  PieChart as PieIcon,
-  Activity,
-  ShieldCheck,
-  AlertCircle,
-  RefreshCw,
-} from "lucide-react";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-} from "recharts";
-import {
-  apiFetchJson,
-  apiFetchPublic,
-  normalizeAnalyticsSummary,
-  normalizeTrends,
-  normalizeTopBrands,
-  normalizeMlHealth,
+  fetchAnalyticsSummary,
+  fetchTrends,
+  fetchTopBrands,
+  fetchFraudCategories,
+  fetchMlHealth,
+  type AnalyticsSummary,
+  type TrendData,
+  type TopBrand,
+  type FraudCategory,
+  type MlHealth,
 } from "@/lib/api";
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function riskColor(score: number) {
+  if (score >= 70) return "var(--danger)";
+  if (score >= 40) return "var(--gold)";
+  return "var(--success)";
+}
+
+function riskLabel(score: number) {
+  if (score >= 70) return "HIGH";
+  if (score >= 40) return "MEDIUM";
+  return "LOW";
+}
+
+const TYPE_LABELS: Record<string, string> = {
+  SELLER_FRAUD: "Seller Fraud",
+  PHISHING: "Phishing",
+  UNAUTHORIZED_CHARGE: "Unauthorized Charge",
+  FAKE_PRODUCT: "Fake Product",
+};
+
+// ── Sub-components ────────────────────────────────────────────────────────────
+
+function StatCard({
+  label,
+  value,
+  sub,
+  accent,
+}: {
+  label: string;
+  value: string | number;
+  sub?: string;
+  accent?: string;
+}) {
+  return (
+    <div
+      style={{
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        borderRadius: "var(--radius)",
+        padding: "1.25rem 1.5rem",
+      }}
+    >
+      <p
+        style={{
+          fontSize: "0.7rem",
+          fontWeight: 700,
+          letterSpacing: "0.16em",
+          textTransform: "uppercase",
+          color: "var(--muted)",
+          marginBottom: "0.5rem",
+        }}
+      >
+        {label}
+      </p>
+      <p
+        style={{
+          fontSize: "clamp(1.5rem,3.5vw,2.25rem)",
+          fontWeight: 800,
+          color: accent ?? "var(--black)",
+          letterSpacing: "-0.02em",
+          lineHeight: 1,
+          fontFamily: "var(--font-bebas), sans-serif",
+        }}
+      >
+        {value}
+      </p>
+      {sub && (
+        <p style={{ fontSize: "0.8rem", color: "var(--muted)", marginTop: "0.35rem" }}>{sub}</p>
+      )}
+    </div>
+  );
+}
+
+function MiniBar({ pct, color }: { pct: number; color: string }) {
+  return (
+    <div
+      style={{
+        height: 6,
+        background: "rgba(15,15,15,0.08)",
+        borderRadius: 99,
+        overflow: "hidden",
+        flex: 1,
+      }}
+    >
+      <div
+        style={{
+          height: "100%",
+          width: `${pct}%`,
+          background: color,
+          borderRadius: 99,
+          transition: "width 0.6s ease",
+        }}
+      />
+    </div>
+  );
+}
+
+function TrendChart({ data }: { data: TrendData[] }) {
+  if (!data.length)
+    return (
+      <p style={{ color: "var(--muted)", fontSize: "0.9rem", textAlign: "center", padding: "2rem 0" }}>
+        No trend data available.
+      </p>
+    );
+
+  const maxCount = Math.max(...data.map((d) => d.count), 1);
+
+  return (
+    <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 140, width: "100%" }}>
+      {data.map((d) => {
+        const h = Math.max(4, (d.count / maxCount) * 130);
+        const color = riskColor(d.avgScore);
+        return (
+          <div
+            key={d.periodLabel}
+            style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}
+            title={`${d.periodLabel}: ${d.count} complaints, avg score ${d.avgScore}`}
+          >
+            <div
+              style={{
+                width: "100%",
+                height: h,
+                background: color,
+                opacity: 0.75,
+                borderRadius: "3px 3px 0 0",
+                transition: "height 0.4s ease",
+              }}
+            />
+            <span
+              style={{
+                fontSize: 9,
+                color: "var(--muted)",
+                letterSpacing: "0.04em",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                maxWidth: "100%",
+                textAlign: "center",
+              }}
+            >
+              {d.periodLabel.slice(5, 7)}/{d.periodLabel.slice(2, 4)}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Main Page ─────────────────────────────────────────────────────────────────
+
+type Period = "week" | "month";
+
 export default function AnalyticsPage() {
-  const { data: session, status } = useSession();
-  const router = useRouter();
-  const [summary, setSummary] = useState<ReturnType<typeof normalizeAnalyticsSummary> | null>(null);
-  const [trends, setTrends] = useState<ReturnType<typeof normalizeTrends>>([]);
-  const [topBrands, setTopBrands] = useState<ReturnType<typeof normalizeTopBrands>>([]);
-  const [mlStatus, setMlStatus] = useState<ReturnType<typeof normalizeMlHealth> | null>(null);
+  const { data: session } = useSession();
+  const email = session?.user?.email;
+
+  const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
+  const [trends, setTrends] = useState<TrendData[]>([]);
+  const [topBrands, setTopBrands] = useState<TopBrand[]>([]);
+  const [categories, setCategories] = useState<FraudCategory[]>([]);
+  const [mlHealth, setMlHealth] = useState<MlHealth | null>(null);
+  const [period, setPeriod] = useState<Period>("month");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    if (!session?.user?.email) return;
-    setError(null);
+    if (!email) return;
     setLoading(true);
+    setError(null);
     try {
-      const [s, t, b, m] = await Promise.all([
-        apiFetchJson<Record<string, unknown>>("/analytics/summary", session.user.email),
-        apiFetchJson<unknown[]>("/analytics/trends", session.user.email),
-        apiFetchJson<unknown[]>("/analytics/top-brands", session.user.email),
-        apiFetchPublic<Record<string, unknown>>("/analytics/health").catch(() => ({
-          modelLoaded: false,
-          datasetRows: 0,
-          featureColumns: [],
-        })),
+      const [sum, trd, brands, cats, ml] = await Promise.all([
+        fetchAnalyticsSummary(email),
+        fetchTrends(email, period),
+        fetchTopBrands(email),
+        fetchFraudCategories(email),
+        fetchMlHealth(),
       ]);
-      setSummary(normalizeAnalyticsSummary(s));
-      setTrends(normalizeTrends(t));
-      setTopBrands(normalizeTopBrands(b));
-      setMlStatus(normalizeMlHealth(m));
-    } catch (e: any) {
-      setError(e.message || "Unable to load analytics.");
+      setSummary(sum);
+      setTrends(trd);
+      setTopBrands(brands);
+      setCategories(cats);
+      setMlHealth(ml);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load analytics.");
     } finally {
       setLoading(false);
     }
-  }, [session?.user?.email]);
+  }, [email, period]);
 
   useEffect(() => {
-    if (status === "unauthenticated") {
-      router.replace("/auth/signin?callbackUrl=%2Fanalytics");
-    }
-  }, [status, router]);
+    load();
+  }, [load]);
 
-  useEffect(() => {
-    if (status === "authenticated") void load();
-  }, [status, load]);
+  const totalByType = summary
+    ? Object.values(summary.complaintsByType).reduce((a, b) => a + b, 0)
+    : 0;
 
-  if (status === "loading" || status === "unauthenticated") {
+  const totalByStatus = summary
+    ? Object.values(summary.complaintsByStatus).reduce((a, b) => a + b, 0)
+    : 0;
+
+  if (!email) {
     return (
-      <div className="py-20 flex justify-center">
-        <div className="loading-text">
-          <span className="pulsing-dot"></span>
-          Loading...
-        </div>
+      <div
+        style={{
+          minHeight: "60vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "var(--muted)",
+          flexDirection: "column",
+          gap: "1rem",
+        }}
+      >
+        <p style={{ fontSize: "1rem" }}>Sign in to view analytics.</p>
       </div>
     );
   }
 
-  const statCards = [
-    { label: "TOTAL COMPLAINTS", value: summary?.totalComplaints ?? 0, sub: "All-time platform signals" },
-    { label: "RESOLUTION RATE", value: `${summary?.resolutionRate.toFixed(1) ?? 0}%`, sub: "Cases closed / Total" },
-    { label: "AVG RISK SCORE", value: summary?.avgRiskScore.toFixed(1) ?? 0, sub: "Platform-wide average" },
-    { label: "HIGH RISK CASES", value: summary?.highRiskCount ?? 0, sub: "Score ≥ 70" },
-  ];
-
-  const pieData = summary ? Object.entries(summary.complaintsByType).map(([name, value]) => ({
-    name: name.replace("_", " "),
-    value
-  })) : [];
-
-  const COLORS = ['#C9A84C', '#0E0E0E', '#7A7A72', '#C94C4C'];
-
   return (
-    <div className="space-y-12 pb-20">
+    <div
+      style={{
+        maxWidth: "var(--content-max)",
+        margin: "0 auto",
+        padding: "clamp(1.5rem,4vw,2.5rem) var(--page-gutter)",
+        paddingTop: "calc(var(--nav-offset) + clamp(1.5rem,4vw,2.5rem))",
+      }}
+    >
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6">
-        <div>
-          <p className="text-[10px] font-medium tracking-[3px] text-[var(--muted)] uppercase mb-1">
-            INTERNAL INTELLIGENCE · DATA ENGINE
-          </p>
-          <h1 className="text-[42px] font-bebas text-[var(--black)] leading-none">
-            FRAUD ANALYTICS
-          </h1>
-        </div>
+      <div style={{ marginBottom: "2rem" }}>
+        <p
+          style={{
+            fontSize: "0.7rem",
+            fontWeight: 700,
+            letterSpacing: "0.22em",
+            textTransform: "uppercase",
+            color: "var(--muted)",
+            marginBottom: "0.4rem",
+          }}
+        >
+          FRAUD INTELLIGENCE
+        </p>
+        <h1
+          style={{
+            fontFamily: "var(--font-bebas), sans-serif",
+            fontSize: "clamp(2rem,5vw,3.5rem)",
+            color: "var(--black)",
+            letterSpacing: "-0.02em",
+            lineHeight: 1,
+          }}
+        >
+          Analytics Dashboard
+        </h1>
 
-        {/* ML Status Badge */}
-        <div className={`px-4 py-2 rounded-full flex items-center gap-2 text-[10px] font-bold tracking-[1px] uppercase border ${
-          mlStatus?.modelLoaded 
-            ? "bg-[rgba(90,158,96,0.1)] border-[rgba(90,158,96,0.2)] text-[var(--success)]" 
-            : "bg-[rgba(201,76,76,0.1)] border-[rgba(201,76,76,0.2)] text-[var(--danger)]"
-        }`}>
-          <div className={`w-[6px] h-[6px] rounded-full ${mlStatus?.modelLoaded ? "bg-[var(--success)]" : "bg-[var(--danger)]"}`} />
-          {mlStatus?.modelLoaded ? "ML ACTIVE" : "ML OFFLINE"}
-        </div>
+        {/* ML badge */}
+        {mlHealth && (
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              marginTop: "0.75rem",
+              padding: "0.35rem 0.75rem",
+              border: "1px solid var(--border)",
+              borderRadius: 99,
+              fontSize: "0.72rem",
+              fontWeight: 700,
+              letterSpacing: "0.1em",
+              color: mlHealth.modelLoaded ? "var(--success)" : "var(--muted)",
+            }}
+          >
+            <span
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: "50%",
+                background: mlHealth.modelLoaded ? "var(--success)" : "var(--muted)",
+                display: "inline-block",
+              }}
+            />
+            ML {mlHealth.modelLoaded ? "ONLINE" : "OFFLINE"} —{" "}
+            {mlHealth.datasetRows.toLocaleString()} TRAINING ROWS
+          </div>
+        )}
       </div>
 
-      {error ? (
-        <div className="bg-[var(--surface)] border border-[var(--border)] rounded-[4px] p-12 flex flex-col items-center justify-center text-center space-y-4">
-           <AlertCircle size={32} className="text-[var(--danger)]" />
-           <p className="text-[14px] text-[var(--black)] font-medium">Unable to load analytics</p>
-           <button 
-             onClick={load}
-             className="text-[10px] font-bold tracking-[2px] text-[var(--gold)] uppercase border border-[var(--gold)] px-6 py-2 rounded-[4px] hover:bg-[var(--gold)] hover:text-[var(--black)] transition-all"
-           >
-             RETRY
-           </button>
+      {error && (
+        <div
+          style={{
+            background: "rgba(203,78,78,0.08)",
+            border: "1px solid var(--danger)",
+            borderRadius: "var(--radius)",
+            padding: "0.75rem 1rem",
+            color: "var(--danger)",
+            fontSize: "0.88rem",
+            marginBottom: "1.5rem",
+          }}
+        >
+          {error}
+        </div>
+      )}
+
+      {loading ? (
+        <div style={{ color: "var(--muted)", padding: "3rem 0", textAlign: "center" }}>
+          Loading analytics…
         </div>
       ) : (
         <>
-          {/* Stats Bar */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-[14px]">
-            {statCards.map((card, i) => (
-              <div 
-                key={i} 
-                className="bg-[var(--surface)] border border-[var(--border)] rounded-[4px] p-[18px] px-[20px]"
+          {/* ── Summary Cards ── */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+              gap: "1rem",
+              marginBottom: "2rem",
+            }}
+          >
+            <StatCard
+              label="Total Complaints"
+              value={summary?.totalComplaints.toLocaleString() ?? "—"}
+            />
+            <StatCard
+              label="Resolution Rate"
+              value={`${summary?.resolutionRate ?? 0}%`}
+              sub={`${summary?.resolvedCount ?? 0} resolved`}
+              accent="var(--success)"
+            />
+            <StatCard
+              label="Avg Risk Score"
+              value={`${summary?.avgRiskScore ?? 0}`}
+              sub={riskLabel(summary?.avgRiskScore ?? 0)}
+              accent={riskColor(summary?.avgRiskScore ?? 0)}
+            />
+            <StatCard
+              label="High-Risk Cases"
+              value={summary?.highRiskCount ?? "—"}
+              sub="score ≥ 70"
+              accent="var(--danger)"
+            />
+          </div>
+
+          {/* ── Trends + Breakdown row ── */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: "1.25rem",
+              marginBottom: "1.25rem",
+            }}
+          >
+            {/* Trend Chart */}
+            <div
+              style={{
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius)",
+                padding: "1.25rem 1.5rem",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: "1.25rem",
+                }}
               >
-                <p className="text-[10px] tracking-[2px] text-[var(--muted)] font-medium uppercase mb-2">
-                  {card.label}
+                <p
+                  style={{
+                    fontSize: "0.7rem",
+                    fontWeight: 700,
+                    letterSpacing: "0.16em",
+                    textTransform: "uppercase",
+                    color: "var(--muted)",
+                  }}
+                >
+                  COMPLAINT VOLUME
                 </p>
-                <p className="text-[38px] font-bebas text-[var(--gold)] leading-none mb-1">
-                  {loading ? "—" : card.value}
-                </p>
-                <p className="text-[11px] text-[var(--muted)]">
-                  {card.sub}
-                </p>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {(["week", "month"] as Period[]).map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => setPeriod(p)}
+                      style={{
+                        fontSize: "0.7rem",
+                        fontWeight: 700,
+                        letterSpacing: "0.1em",
+                        textTransform: "uppercase",
+                        padding: "0.25rem 0.6rem",
+                        border: "1px solid",
+                        borderColor: period === p ? "var(--gold)" : "var(--border)",
+                        background: period === p ? "var(--gold-dim)" : "transparent",
+                        color: period === p ? "var(--gold)" : "var(--muted)",
+                        borderRadius: 4,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
               </div>
-            ))}
-          </div>
-
-          {/* Charts Row */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Bar Chart */}
-            <div className="bg-[var(--surface)] border border-[var(--border)] rounded-[4px] p-6 space-y-6">
-               <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                     <BarChart3 size={16} className="text-[var(--black)]" />
-                     <h3 className="text-[12px] font-bold tracking-[2px] uppercase">Complaints Over Time</h3>
-                  </div>
-                  <div className="flex items-center gap-2 text-[10px] font-bold text-[var(--muted)]">
-                     <span className="text-[var(--black)] cursor-pointer">MONTHLY</span>
-                     <span className="opacity-40">WEEKLY</span>
-                  </div>
-               </div>
-               <div className="h-[240px] w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={trends}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(0,0,0,0.05)" />
-                      <XAxis 
-                        dataKey="periodLabel" 
-                        axisLine={false} 
-                        tickLine={false} 
-                        tick={{ fontSize: 10, fill: 'var(--muted)', fontWeight: 500 }}
-                        tickFormatter={(val) => val.split("-").slice(1).join("-")} 
-                      />
-                      <YAxis 
-                        axisLine={false} 
-                        tickLine={false} 
-                        tick={{ fontSize: 10, fill: 'var(--muted)', fontWeight: 500 }} 
-                      />
-                      <Tooltip 
-                        contentStyle={{ borderRadius: 4, border: '1px solid var(--border)', background: 'var(--cream)', fontSize: 11 }}
-                      />
-                      <Bar dataKey="count" fill="var(--black)" radius={[2, 2, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-               </div>
+              <TrendChart data={trends} />
             </div>
 
-            {/* Donut Chart */}
-            <div className="bg-[var(--surface)] border border-[var(--border)] rounded-[4px] p-6 space-y-6">
-               <div className="flex items-center gap-2">
-                  <PieIcon size={16} className="text-[var(--black)]" />
-                  <h3 className="text-[12px] font-bold tracking-[2px] uppercase">Fraud By Category</h3>
-               </div>
-               <div className="h-[240px] w-full flex items-center justify-center">
-                  {pieData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={pieData}
-                          innerRadius={60}
-                          outerRadius={80}
-                          paddingAngle={5}
-                          dataKey="value"
+            {/* Fraud Categories */}
+            <div
+              style={{
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius)",
+                padding: "1.25rem 1.5rem",
+              }}
+            >
+              <p
+                style={{
+                  fontSize: "0.7rem",
+                  fontWeight: 700,
+                  letterSpacing: "0.16em",
+                  textTransform: "uppercase",
+                  color: "var(--muted)",
+                  marginBottom: "1.25rem",
+                }}
+              >
+                FRAUD CATEGORIES
+              </p>
+              {categories.length === 0 ? (
+                <p style={{ color: "var(--muted)", fontSize: "0.9rem" }}>No data.</p>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                  {categories.map((cat) => (
+                    <div key={cat.type}>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          marginBottom: 6,
+                          fontSize: "0.82rem",
+                          fontWeight: 600,
+                          color: "var(--black)",
+                        }}
+                      >
+                        <span>{TYPE_LABELS[cat.type] ?? cat.type}</span>
+                        <span style={{ color: "var(--muted)" }}>
+                          {cat.percentage.toFixed(1)}%
+                        </span>
+                      </div>
+                      <MiniBar pct={cat.percentage} color="var(--gold)" />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ── Status Breakdown + Top Brands row ── */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1.6fr",
+              gap: "1.25rem",
+              marginBottom: "1.25rem",
+            }}
+          >
+            {/* Status breakdown */}
+            <div
+              style={{
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius)",
+                padding: "1.25rem 1.5rem",
+              }}
+            >
+              <p
+                style={{
+                  fontSize: "0.7rem",
+                  fontWeight: 700,
+                  letterSpacing: "0.16em",
+                  textTransform: "uppercase",
+                  color: "var(--muted)",
+                  marginBottom: "1.25rem",
+                }}
+              >
+                BY STATUS
+              </p>
+              {summary &&
+                Object.entries(summary.complaintsByStatus).map(([status, count]) => {
+                  const pct = totalByStatus ? (count / totalByStatus) * 100 : 0;
+                  const color =
+                    status === "RESOLVED"
+                      ? "var(--success)"
+                      : status === "PENDING"
+                        ? "var(--gold)"
+                        : "var(--muted)";
+                  return (
+                    <div key={status} style={{ marginBottom: "0.85rem" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          fontSize: "0.82rem",
+                          fontWeight: 600,
+                          color: "var(--black)",
+                          marginBottom: 5,
+                        }}
+                      >
+                        <span>{status}</span>
+                        <span style={{ color: "var(--muted)" }}>
+                          {count} ({pct.toFixed(0)}%)
+                        </span>
+                      </div>
+                      <MiniBar pct={pct} color={color} />
+                    </div>
+                  );
+                })}
+            </div>
+
+            {/* Top Brands */}
+            <div
+              style={{
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius)",
+                padding: "1.25rem 1.5rem",
+              }}
+            >
+              <p
+                style={{
+                  fontSize: "0.7rem",
+                  fontWeight: 700,
+                  letterSpacing: "0.16em",
+                  textTransform: "uppercase",
+                  color: "var(--muted)",
+                  marginBottom: "1.25rem",
+                }}
+              >
+                TOP BRANDS BY COMPLAINTS
+              </p>
+              {topBrands.length === 0 ? (
+                <p style={{ color: "var(--muted)", fontSize: "0.9rem" }}>No data.</p>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                  {topBrands.map((b, i) => {
+                    const resolveRate = b.count
+                      ? Math.round((b.resolvedCount / b.count) * 100)
+                      : 0;
+                    return (
+                      <div
+                        key={b.brandName}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "0.85rem",
+                          padding: "0.6rem 0",
+                          borderBottom:
+                            i < topBrands.length - 1 ? "1px solid var(--border)" : "none",
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontFamily: "var(--font-mono), monospace",
+                            fontSize: "0.72rem",
+                            color: "var(--muted)",
+                            width: 18,
+                            flexShrink: 0,
+                          }}
                         >
-                          {pieData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                          ))}
-                        </Pie>
-                        <Tooltip />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <div className="text-[12px] text-[var(--muted)]">No distribution data available.</div>
-                  )}
-               </div>
+                          {String(i + 1).padStart(2, "0")}
+                        </span>
+                        <span
+                          style={{
+                            flex: 1,
+                            fontWeight: 700,
+                            fontSize: "0.88rem",
+                            color: "var(--black)",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {b.brandName}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: "0.78rem",
+                            color: "var(--muted)",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {b.count} complaints
+                        </span>
+                        <span
+                          style={{
+                            fontSize: "0.72rem",
+                            fontWeight: 700,
+                            letterSpacing: "0.08em",
+                            color: riskColor(b.avgScore),
+                            padding: "0.2rem 0.5rem",
+                            border: `1px solid ${riskColor(b.avgScore)}`,
+                            borderRadius: 4,
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {riskLabel(b.avgScore)}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: "0.75rem",
+                            color: "var(--success)",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {resolveRate}% resolved
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Top Brands Table */}
-          <div className="bg-[var(--surface)] border border-[var(--border)] rounded-[4px] overflow-hidden">
-             <div className="px-6 py-5 border-b border-[var(--border)]">
-                <h3 className="text-[12px] font-bold tracking-[2px] uppercase text-[var(--black)]">Top Fraudulent Brands</h3>
-             </div>
-             <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                   <thead>
-                      <tr className="border-b border-[var(--border)] font-medium text-[10px] tracking-[2px] text-[var(--muted)] uppercase">
-                         <th className="px-6 py-4">RANK</th>
-                         <th className="px-6 py-4">BRAND NAME</th>
-                         <th className="px-6 py-4">COMPLAINT COUNT</th>
-                         <th className="px-6 py-4">AVG SCORE</th>
-                         <th className="px-6 py-4 text-right">RESOLVED %</th>
-                      </tr>
-                   </thead>
-                   <tbody className="divide-y divide-[var(--border)]">
-                      {topBrands.length === 0 ? (
-                        <tr><td colSpan={5} className="px-6 py-10 text-center text-[12px] text-[var(--muted)]">No brand rankings available.</td></tr>
-                      ) : (
-                        topBrands.map((brand, i) => {
-                           const resolvedPct = brand.count > 0 ? (brand.resolvedCount / brand.count) * 100 : 0;
-                           const scoreColor = brand.avgScore >= 60 ? "text-[var(--danger)]" : brand.avgScore >= 35 ? "text-[var(--gold)]" : "text-[var(--success)]";
-                           
-                           return (
-                              <tr key={i} className="hover:bg-[rgba(0,0,0,0.02)] transition-colors">
-                                 <td className="px-6 py-4 font-mono text-[11px] text-[var(--muted)]">#{i + 1}</td>
-                                 <td className="px-6 py-4 text-[13px] font-medium text-[var(--black)]">{brand.brandName}</td>
-                                 <td className="px-6 py-4 text-[12px] text-[var(--black)]">{brand.count}</td>
-                                 <td className={`px-6 py-4 text-[12px] font-bold ${scoreColor}`}>{brand.avgScore.toFixed(1)}</td>
-                                 <td className="px-6 py-4 text-[12px] text-right font-mono text-[var(--black)]">{resolvedPct.toFixed(1)}%</td>
-                              </tr>
-                           );
-                        })
-                      )}
-                   </tbody>
-                </table>
-             </div>
-          </div>
+          {/* ── Type Breakdown ── */}
+          {summary && Object.keys(summary.complaintsByType).length > 0 && (
+            <div
+              style={{
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius)",
+                padding: "1.25rem 1.5rem",
+              }}
+            >
+              <p
+                style={{
+                  fontSize: "0.7rem",
+                  fontWeight: 700,
+                  letterSpacing: "0.16em",
+                  textTransform: "uppercase",
+                  color: "var(--muted)",
+                  marginBottom: "1.25rem",
+                }}
+              >
+                BREAKDOWN BY TYPE
+              </p>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                  gap: "1rem",
+                }}
+              >
+                {Object.entries(summary.complaintsByType).map(([type, count]) => {
+                  const pct = totalByType ? Math.round((count / totalByType) * 100) : 0;
+                  return (
+                    <div
+                      key={type}
+                      style={{
+                        padding: "1rem",
+                        border: "1px solid var(--border)",
+                        borderRadius: "var(--radius)",
+                        background: "var(--cream)",
+                      }}
+                    >
+                      <p
+                        style={{
+                          fontSize: "0.68rem",
+                          fontWeight: 700,
+                          letterSpacing: "0.14em",
+                          textTransform: "uppercase",
+                          color: "var(--muted)",
+                          marginBottom: "0.4rem",
+                        }}
+                      >
+                        {TYPE_LABELS[type] ?? type}
+                      </p>
+                      <p
+                        style={{
+                          fontSize: "1.5rem",
+                          fontWeight: 800,
+                          color: "var(--black)",
+                          fontFamily: "var(--font-bebas), sans-serif",
+                          letterSpacing: "-0.01em",
+                          lineHeight: 1,
+                        }}
+                      >
+                        {count.toLocaleString()}
+                      </p>
+                      <p style={{ fontSize: "0.78rem", color: "var(--muted)", marginTop: "0.25rem" }}>
+                        {pct}% of total
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>
