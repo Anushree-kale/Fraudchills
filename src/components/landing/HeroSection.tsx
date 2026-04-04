@@ -2,23 +2,9 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
-
-function useInView<T extends HTMLElement>(options: IntersectionObserverInit = {}) {
-  const ref = useRef<T | null>(null);
-  const [inView, setInView] = useState(false);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const obs = new IntersectionObserver(([e]) => {
-      if (e.isIntersecting) setInView(true);
-    }, { threshold: 0.2, ...options });
-    obs.observe(el);
-    return () => obs.disconnect();
-  }, [options]);
-  return { ref, inView };
-}
+import { useInView } from "@/hooks/useInView";
 
 function StatPill({
   label,
@@ -49,7 +35,7 @@ function StatPill({
   const display = `${Math.round(n)}${suffix}`;
 
   return (
-    <div className="flex min-h-[6.75rem] flex-col items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--cream)] px-2 py-4 transition-colors hover:border-[var(--gold)] sm:min-h-[7.5rem] sm:px-3 sm:py-5 md:min-h-[8rem]">
+    <div className="stat-pill-interactive flex min-h-[6.75rem] flex-col items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--cream)] px-2 py-4 transition-[transform,box-shadow,border-color] duration-300 sm:min-h-[7.5rem] sm:px-3 sm:py-5 md:min-h-[8rem]">
       <span className="mb-1.5 text-[clamp(1.35rem,3.8vw,2.1rem)] font-bold leading-none text-[var(--gold)] sm:mb-2">
         {display}
       </span>
@@ -88,13 +74,13 @@ export default function HeroSection() {
             <div className="mt-7 flex flex-wrap gap-3 sm:mt-9 sm:gap-4">
               <Link
                 href={session ? "/complaints/new" : "/auth/signin?callbackUrl=%2Fcomplaints%2Fnew"}
-                className="inline-flex min-h-[2.75rem] min-w-[10rem] items-center justify-center bg-black px-8 py-3 text-[10px] font-bold uppercase tracking-[0.14em] text-white transition-colors hover:bg-[#222] sm:min-h-[3rem] sm:px-10 sm:text-[11px]"
+                className="hero-cta-btn hero-cta-btn--primary inline-flex min-h-[2.75rem] min-w-[10rem] items-center justify-center bg-black px-8 py-3 text-[10px] font-bold uppercase tracking-[0.14em] text-white transition-[transform,box-shadow,background-color] duration-300 hover:bg-[#222] active:scale-[0.98] sm:min-h-[3rem] sm:px-10 sm:text-[11px]"
               >
                 REPORT NOW
               </Link>
               <Link
                 href="/analytics"
-                className="inline-flex min-h-[2.75rem] items-center justify-center gap-2 border border-black bg-transparent px-8 py-3 text-[10px] font-bold uppercase tracking-[0.14em] text-black transition-colors hover:bg-[var(--surface)] sm:min-h-[3rem] sm:px-10 sm:text-[11px]"
+                className="hero-cta-btn inline-flex min-h-[2.75rem] items-center justify-center gap-2 border border-black bg-transparent px-8 py-3 text-[10px] font-bold uppercase tracking-[0.14em] text-black transition-[transform,box-shadow,background-color] duration-300 hover:bg-[var(--surface)] active:scale-[0.98] sm:min-h-[3rem] sm:px-10 sm:text-[11px]"
               >
                 FRAUD ANALYTICS
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
@@ -115,12 +101,12 @@ export default function HeroSection() {
           </div>
 
           <div className="w-full shrink-0 lg:w-[min(44%,26rem)] xl:w-[min(46%,28rem)]">
-            <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-[0_4px_24px_rgba(15,15,15,0.06)]">
+            <div className="hero-visual-frame group overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-[0_4px_24px_rgba(15,15,15,0.06)] transition-[transform,box-shadow] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-1 hover:shadow-[0_20px_50px_rgba(15,15,15,0.12)]">
               <div className="relative aspect-[4/3] w-full overflow-hidden">
                 <Image
                   src="/images/hero-visual.png"
                   alt="Fraud detection — shield and verification graphic"
-                  className="object-cover object-center"
+                  className="object-cover object-center transition-transform duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-[1.03]"
                   fill
                   sizes="(max-width: 1024px) 100vw, 420px"
                   priority

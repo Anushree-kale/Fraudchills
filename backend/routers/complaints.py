@@ -18,7 +18,7 @@ router = APIRouter()
 
 
 # ── GET /complaints ────────────────────────────────────────────────────────────
-@router.get("/", response_model=List[schemas.Complaint])
+@router.get("", response_model=List[schemas.Complaint])
 def get_complaints(
     q: Optional[str] = None,          # Full-text search query
     brand: Optional[str] = None,
@@ -38,7 +38,7 @@ def get_complaints(
             func.to_tsvector('english', models.Complaint.details).op('@@')(func.to_tsquery('english', q.replace(" ", " & "))) |
             models.Complaint.brand_name.ilike(f"%{q}%")
         )
-    
+
     if brand:
         query = query.filter(models.Complaint.brand_name.ilike(f"%{brand}%"))
     if type:
@@ -56,11 +56,13 @@ def get_complaints(
 
 
 # ── GET /complaints/trending ──────────────────────────────────────────────────
+# NOTE: This MUST be defined before /{complaint_id} routes to avoid UUID
+# parsing attempting to match the literal string "trending".
 @router.get("/trending", response_model=List[schemas.Complaint])
 def get_trending_complaints(db: Session = Depends(get_db)):
     """Trending complaints based on upvotes in the last 7 days."""
     seven_days_ago = datetime.now() - timedelta(days=7)
-    
+
     trending = (
         db.query(models.Complaint)
         .filter(models.Complaint.created_at >= seven_days_ago)
@@ -77,6 +79,7 @@ def get_trending_complaints(db: Session = Depends(get_db)):
             .all()
         )
     return trending
+
 
 # ── GET /complaints/{id} ───────────────────────────────────────────────────────
 @router.get("/{complaint_id}", response_model=schemas.Complaint)
@@ -134,12 +137,13 @@ def get_complaint_sla(complaint_id: UUID, db: Session = Depends(get_db)):
         progress_pct=progress_pct,
     )
 
+
 def generate_case_number(db: Session) -> str:
     """Generate a unique case number like FC-1234."""
     last_complaint = db.query(models.Complaint).order_by(models.Complaint.created_at.desc()).first()
     if not last_complaint:
         return "FC-1001"
-    
+
     try:
         if not last_complaint.case_number:
             return f"FC-{random.randint(1000, 9999)}"
@@ -148,19 +152,20 @@ def generate_case_number(db: Session) -> str:
     except (IndexError, ValueError):
         return f"FC-{random.randint(1001, 9999)}"
 
+
 def calculate_risk_score(db: Session, payload: schemas.ComplaintCreate, current_user: models.User) -> float:
     """Calculate a rule-based risk score for a complaint."""
     # Base score from ML helper
     score = score_complaint(payload)
-    
+
     # Rule 1: Type Weight (Unauthorized Charge = High Risk)
     if payload.type.upper() == "UNAUTHORIZED_CHARGE":
         score = max(score, 85.0)
-    
+
     # Rule 2: High Amount Threshold (> ₹5000 / $60)
     if payload.amount > 5000:
         score = min(100.0, score + 20.0)
-    
+
     # Rule 3: Platform Recurrence
     platform_count = db.query(func.count(models.Complaint.id)).filter(
         models.Complaint.platform == payload.platform
@@ -174,25 +179,26 @@ def calculate_risk_score(db: Session, payload: schemas.ComplaintCreate, current_
     ).first()
     if fraud_match:
         score = max(score, 95.0)
-    
+
     # User credibility score boost
     user_cred_modifier = (current_user.credibility_score - 50) / 10
     score -= user_cred_modifier
 
     return round(max(0.0, min(score, 100.0)), 2)
 
+
 # ── POST /complaints ───────────────────────────────────────────────────────────
-@router.post("/", response_model=schemas.Complaint, status_code=201)
+@router.post("", response_model=schemas.Complaint, status_code=201)
 def create_complaint(
     payload: schemas.ComplaintCreate,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
     """Submit a new complaint. Automatically ML-scored on creation."""
-    
+
     import time
     start_t = time.time()
-    
+
     # ── Spam Prevention ────────────────────────────────────────────────────────
     # 1. Rate limiting: 10 per 24h
     last_24h = datetime.now() - timedelta(days=1)
@@ -200,10 +206,10 @@ def create_complaint(
         models.Complaint.user_id == current_user.id,
         models.Complaint.created_at >= last_24h
     ).scalar()
-    
+
     if daily_count >= 10:
         raise HTTPException(status_code=429, detail="Daily limit reached (10 complaints per 24h).")
-        
+
     # 2. Duplicate detection (Similarity > 0.85)
     is_duplicate = check_duplicate_complaint(db, current_user.id, payload.brand_name, payload.details)
     if is_duplicate:
@@ -297,9 +303,9 @@ def respond_to_complaint(
 
     # Notify user of response
     create_notification(
-        db, 
-        complaint.user_id, 
-        "RESPONSE", 
+        db,
+        complaint.user_id,
+        "RESPONSE",
         f"A brand has responded to your complaint against {complaint.brand_name}."
     )
 
@@ -314,6 +320,7 @@ def get_response(complaint_id: UUID, db: Session = Depends(get_db)):
     if not response:
         raise HTTPException(status_code=404, detail="No response for this complaint yet.")
     return response
+
 
 # ── POST /complaints/{id}/upvote ──────────────────────────────────────────────
 @router.post("/{complaint_id}/upvote", status_code=200)
@@ -337,9 +344,9 @@ def upvote_complaint(
 
     vote = models.ComplaintVote(user_id=current_user.id, complaint_id=complaint_id)
     db.add(vote)
-    
+
     # Increment counter for fast sorting
     complaint.upvotes_count += 1
     db.commit()
-    
+
     return {"message": "Upvoted successfully", "upvotes": complaint.upvotes_count}

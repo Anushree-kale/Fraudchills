@@ -81,14 +81,16 @@ export default function Sidebar() {
                   <Link
                     key={item.name}
                     href={item.href}
-                    className={`flex items-center justify-between rounded-md py-0.5 text-[13px] transition-colors ${
-                      isActive ? "font-bold text-[var(--black)]" : "text-[#555] hover:text-[var(--black)]"
+                    className={`group/nav flex items-center justify-between rounded-lg px-1.5 py-1.5 text-[13px] transition-[transform,background-color,color] duration-200 ${
+                      isActive
+                        ? "bg-[rgba(15,15,15,0.04)] font-bold text-[var(--black)] shadow-[inset_2px_0_0_0_var(--gold)]"
+                        : "text-[#555] hover:translate-x-0.5 hover:bg-[rgba(15,15,15,0.03)] hover:text-[var(--black)] active:scale-[0.99]"
                     }`}
                   >
                     <div className="flex min-w-0 items-center gap-3">
                       <div
-                        className={`h-1.5 w-1.5 shrink-0 rounded-full transition-opacity ${
-                          isActive ? "bg-[var(--gold)]" : item.dotColor
+                        className={`h-1.5 w-1.5 shrink-0 rounded-full transition-transform duration-200 ${
+                          isActive ? "bg-[var(--gold)]" : `${item.dotColor} group-hover/nav:scale-125`
                         }`}
                       />
                       <span className="leading-snug">{item.name}</span>

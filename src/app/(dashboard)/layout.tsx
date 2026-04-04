@@ -39,12 +39,14 @@ export default function DashboardLayout({
             <Link
               key={tab.name}
               href={tab.href}
-              className={`flex h-12 w-12 items-center justify-center rounded-lg transition-colors ${
-                isActive ? "text-[var(--gold)]" : "text-[var(--muted)] hover:text-[var(--black)]"
+              className={`group flex h-12 w-12 items-center justify-center rounded-xl transition-[transform,background-color,color] duration-200 active:scale-95 ${
+                isActive
+                  ? "bg-[var(--gold)]/12 text-[var(--gold)] shadow-[inset_0_0_0_1px_rgba(201,168,76,0.35)]"
+                  : "text-[var(--muted)] hover:bg-[rgba(15,15,15,0.04)] hover:text-[var(--black)]"
               }`}
               aria-label={tab.name}
             >
-              <Icon size={22} strokeWidth={isActive ? 2.25 : 2} />
+              <Icon size={22} strokeWidth={isActive ? 2.25 : 2} className="transition-transform duration-200 group-hover:scale-105" />
             </Link>
           );
         })}

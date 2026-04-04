@@ -41,7 +41,7 @@ export default function Navbar() {
         <div className="flex min-w-0 shrink-0 items-center">
           <Link
             href="/"
-            className="flex items-center font-bebas text-[clamp(1.25rem,3.5vw,1.5rem)] leading-none tracking-tight text-[var(--black)]"
+            className="flex items-center font-bebas text-[clamp(1.25rem,3.5vw,1.5rem)] leading-none tracking-tight text-[var(--black)] transition-[transform,opacity] duration-300 hover:opacity-90 active:scale-[0.98]"
           >
             FRAUDCHILLS<span className="text-[var(--gold)]">_</span>
           </Link>
@@ -54,8 +54,10 @@ export default function Navbar() {
               <Link
                 key={link.name}
                 href={link.href}
-                className={`relative flex h-[var(--nav-h)] items-center text-[10px] font-bold tracking-[0.18em] transition-colors ${
-                  isActive ? "text-[var(--black)]" : "text-[var(--muted)] hover:text-[var(--black)]"
+                className={`relative flex h-[var(--nav-h)] items-center text-[10px] font-bold tracking-[0.18em] transition-colors duration-200 ${
+                  isActive
+                    ? "text-[var(--black)]"
+                    : "text-[var(--muted)] after:absolute after:bottom-0 after:left-0 after:h-0.5 after:w-0 after:bg-[var(--gold)] after:transition-[width] after:duration-300 after:ease-out hover:text-[var(--black)] hover:after:w-full"
                 }`}
               >
                 {link.name}
@@ -69,23 +71,26 @@ export default function Navbar() {
 
         <div className="flex shrink-0 items-center gap-3 sm:gap-4">
           {session ? (
-            <div className="flex max-w-[10rem] cursor-pointer items-center gap-2 rounded-full border border-[#1A1A1A] bg-[#1A1A1A] py-1 pl-1 pr-3 text-white transition-colors hover:bg-black sm:max-w-none sm:pr-4">
-              <div className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full bg-[var(--gold)] pt-px text-[10px] font-bold text-[var(--black)]">
+            <Link
+              href="/dashboard"
+              className="group flex max-w-[10rem] cursor-pointer items-center gap-2 rounded-full border border-[#1A1A1A] bg-[#1A1A1A] py-1 pl-1 pr-3 text-white transition-[transform,background-color,box-shadow] duration-300 hover:bg-black hover:shadow-[0_8px_24px_rgba(0,0,0,0.2)] active:scale-[0.98] sm:max-w-none sm:pr-4"
+            >
+              <div className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full bg-[var(--gold)] pt-px text-[10px] font-bold text-[var(--black)] transition-transform duration-300 group-hover:scale-105">
                 {initials}
               </div>
               <span className="hidden truncate text-[11px] font-bold leading-none sm:inline">{displayName}</span>
-            </div>
+            </Link>
           ) : (
             <>
               <Link
                 href="/auth/signin"
-                className="text-[10px] font-bold tracking-[0.14em] text-[var(--black)] uppercase transition-colors hover:text-[var(--gold)]"
+                className="text-[10px] font-bold tracking-[0.14em] text-[var(--black)] uppercase transition-[color,transform] duration-200 hover:text-[var(--gold)] active:scale-[0.98]"
               >
                 LOGIN
               </Link>
               <Link
                 href="/auth/signin?callbackUrl=%2Fcomplaints%2Fnew"
-                className="bg-[var(--black)] px-3 py-2.5 text-[10px] font-bold tracking-[0.14em] text-white uppercase transition-colors hover:bg-[#2A2A2A] sm:px-5"
+                className="bg-[var(--black)] px-3 py-2.5 text-[10px] font-bold tracking-[0.14em] text-white uppercase transition-[transform,background-color,box-shadow] duration-300 hover:bg-[#2A2A2A] hover:shadow-[0_6px_20px_rgba(0,0,0,0.18)] active:scale-[0.98] sm:px-5"
               >
                 FILE RECORD
               </Link>

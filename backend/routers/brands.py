@@ -50,7 +50,7 @@ def _build_brand_profile(brand_name: str, db: Session) -> schemas.BrandProfile:
 
 
 # ── GET /brands ────────────────────────────────────────────────────────────────
-@router.get("/", response_model=List[schemas.BrandSummary])
+@router.get("", response_model=List[schemas.BrandSummary])
 def list_brands(skip: int = 0, limit: int = 20, db: Session = Depends(get_db)):
     """
     Returns all brands that have at least one complaint, ordered by complaint count.

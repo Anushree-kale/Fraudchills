@@ -554,7 +554,11 @@ button {
   border: 1px solid rgba(201, 168, 76, 0.18);
   border-radius: var(--radius);
   padding: clamp(1.25rem, 3vw, 1.75rem);
-  transition: border-color 0.2s ease;
+  transition:
+    border-color 0.3s var(--ease-out-expo),
+    transform 0.4s var(--ease-out-expo),
+    box-shadow 0.4s var(--ease-out-expo),
+    background-color 0.35s ease;
 }
 
 .card {
@@ -564,7 +568,18 @@ button {
 .fcard:hover,
 .preview-card:hover,
 .card:hover {
-  border-color: rgba(201, 168, 76, 0.4);
+  border-color: rgba(201, 168, 76, 0.45);
+}
+
+.fcard:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.preview-card--link:hover {
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.22);
+  background: rgba(255, 255, 255, 0.055);
 }
 
 .fcard h3 {
@@ -587,11 +602,15 @@ button {
   font-weight: 600;
   color: var(--gold);
   border-bottom: 1px solid transparent;
-  transition: border-color 0.2s ease;
+  transition:
+    border-color 0.25s ease,
+    color 0.25s ease,
+    transform 0.3s var(--ease-out-expo);
 }
 
 .inline-link:hover {
   border-bottom-color: var(--gold);
+  transform: translateX(3px);
 }
 
 .meter {
@@ -648,11 +667,19 @@ button {
 .preview-card--link {
   display: block;
   cursor: pointer;
-  transition: transform 200ms var(--ease-spring);
+  transition:
+    transform 0.35s var(--ease-spring),
+    border-color 0.3s var(--ease-out-expo),
+    box-shadow 0.4s var(--ease-out-expo),
+    background-color 0.35s ease;
 }
 
 .preview-card--link:hover {
-  transform: scale(1.02);
+  transform: translateY(-5px) scale(1.01);
+}
+
+.preview-card--link:active {
+  transform: translateY(-2px) scale(1.005);
 }
 
 .preview-visual {
@@ -661,6 +688,12 @@ button {
   border-radius: 6px;
   border: 1px solid rgba(201, 168, 76, 0.12);
   background: rgba(0, 0, 0, 0.25);
+  transition: transform 0.5s var(--ease-out-expo), opacity 0.35s ease;
+}
+
+.preview-card--link:hover .preview-visual {
+  transform: scale(1.02);
+  opacity: 0.95;
 }
 
 .preview-visual--minimal {
@@ -686,6 +719,35 @@ button {
   border: 1px solid rgba(201, 168, 76, 0.28);
   border-radius: 12px;
   padding: clamp(2rem, 5vw, 3.5rem);
+  transition:
+    border-color 0.35s var(--ease-out-expo),
+    box-shadow 0.45s var(--ease-out-expo),
+    transform 0.45s var(--ease-out-expo);
+}
+
+.cta-panel:hover {
+  border-color: rgba(201, 168, 76, 0.42);
+  box-shadow: 0 24px 56px rgba(0, 0, 0, 0.35);
+  transform: translateY(-2px);
+}
+
+.cta-panel .btn-secondary,
+.cta-panel .btn-outline {
+  transition:
+    transform 0.25s var(--ease-spring),
+    background 0.25s ease,
+    border-color 0.25s ease,
+    color 0.25s ease;
+}
+
+.cta-panel .btn-secondary:hover,
+.cta-panel .btn-outline:hover {
+  transform: translateY(-1px);
+}
+
+.cta-panel .btn-secondary:active,
+.cta-panel .btn-outline:active {
+  transform: translateY(0) scale(0.99);
 }
 
 .cta-panel h2 {
@@ -733,8 +795,13 @@ button {
   margin-bottom: 0.5rem;
 }
 
+.footer a {
+  transition: color 0.25s ease, transform 0.3s var(--ease-out-expo);
+}
+
 .footer a:hover {
   color: var(--gold);
+  transform: translateX(4px);
 }
 
 /* ── Reveal animations ── */
@@ -753,6 +820,122 @@ button {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* ── Scroll reveal (landing) ── */
+
+.reveal-on-view:not(.reveal-on-view--in) .section-title,
+.reveal-on-view:not(.reveal-on-view--in) .section-lead,
+.reveal-on-view:not(.reveal-on-view--in) .feature-grid,
+.reveal-on-view:not(.reveal-on-view--in) .preview-grid,
+.reveal-on-view:not(.reveal-on-view--in) .cta-panel,
+.reveal-on-view:not(.reveal-on-view--in)>p {
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+.reveal-on-view:not(.reveal-on-view--in) .fcard,
+.reveal-on-view:not(.reveal-on-view--in) .preview-card--link {
+  opacity: 0;
+  transform: translateY(16px);
+}
+
+.reveal-on-view .section-title,
+.reveal-on-view .section-lead,
+.reveal-on-view .feature-grid,
+.reveal-on-view .preview-grid,
+.reveal-on-view .cta-panel,
+.reveal-on-view>p {
+  transition:
+    opacity 0.65s var(--ease-out-expo),
+    transform 0.65s var(--ease-out-expo);
+}
+
+.reveal-on-view .fcard,
+.reveal-on-view .preview-card--link {
+  transition:
+    opacity 0.55s var(--ease-out-expo),
+    transform 0.55s var(--ease-out-expo),
+    border-color 0.3s var(--ease-out-expo),
+    box-shadow 0.4s var(--ease-out-expo),
+    background-color 0.35s ease;
+}
+
+.reveal-on-view.reveal-on-view--in .section-title {
+  opacity: 1;
+  transform: none;
+  transition-delay: 0ms;
+}
+
+.reveal-on-view.reveal-on-view--in .section-lead {
+  opacity: 1;
+  transform: none;
+  transition-delay: 0.08s;
+}
+
+.reveal-on-view.reveal-on-view--in .feature-grid,
+.reveal-on-view.reveal-on-view--in .preview-grid {
+  opacity: 1;
+  transform: none;
+  transition-delay: 0.12s;
+}
+
+.reveal-on-view.reveal-on-view--in .cta-panel {
+  opacity: 1;
+  transform: none;
+  transition-delay: 0ms;
+}
+
+.reveal-on-view.reveal-on-view--in>p {
+  opacity: 1;
+  transform: none;
+  transition-delay: 0ms;
+}
+
+.reveal-on-view.reveal-on-view--in .fcard:nth-child(1) {
+  opacity: 1;
+  transform: none;
+  transition-delay: 0.14s;
+}
+
+.reveal-on-view.reveal-on-view--in .fcard:nth-child(2) {
+  opacity: 1;
+  transform: none;
+  transition-delay: 0.22s;
+}
+
+.reveal-on-view.reveal-on-view--in .fcard:nth-child(3) {
+  opacity: 1;
+  transform: none;
+  transition-delay: 0.3s;
+}
+
+.reveal-on-view.reveal-on-view--in .preview-card--link:nth-child(1) {
+  opacity: 1;
+  transform: none;
+  transition-delay: 0.14s;
+}
+
+.reveal-on-view.reveal-on-view--in .preview-card--link:nth-child(2) {
+  opacity: 1;
+  transform: none;
+  transition-delay: 0.24s;
+}
+
+.reveal-on-view.reveal-on-view--in .preview-card--link:nth-child(3) {
+  opacity: 1;
+  transform: none;
+  transition-delay: 0.34s;
+}
+
+.hero-cta-btn--primary:hover {
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.22);
+}
+
+.stat-pill-interactive:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 28px rgba(15, 15, 15, 0.1);
+  border-color: var(--gold);
 }
 
 /* ── App pages ── */
@@ -1217,5 +1400,42 @@ button {
 
   .hero-rule {
     width: min(420px, 85vw) !important;
+  }
+
+  .reveal-on-view:not(.reveal-on-view--in) .section-title,
+  .reveal-on-view:not(.reveal-on-view--in) .section-lead,
+  .reveal-on-view:not(.reveal-on-view--in) .feature-grid,
+  .reveal-on-view:not(.reveal-on-view--in) .preview-grid,
+  .reveal-on-view:not(.reveal-on-view--in) .cta-panel,
+  .reveal-on-view:not(.reveal-on-view--in)>p,
+  .reveal-on-view:not(.reveal-on-view--in) .fcard,
+  .reveal-on-view:not(.reveal-on-view--in) .preview-card--link {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+
+  .fcard:hover,
+  .preview-card--link:hover,
+  .cta-panel:hover {
+    transform: none !important;
+  }
+
+  .stat-pill-interactive:hover {
+    transform: none !important;
+    box-shadow: none !important;
+  }
+
+  .footer a:hover {
+    transform: none !important;
+  }
+
+  .inline-link:hover {
+    transform: none !important;
+  }
+
+  .hero-visual-frame:hover {
+    transform: none !important;
+    box-shadow: 0 4px 24px rgba(15, 15, 15, 0.06) !important;
   }
 }

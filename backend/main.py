@@ -32,7 +32,11 @@ start_scheduler()
 app = FastAPI(
     title="Fraudchills API",
     description="Backend for the Fraudchills Platform",
-    version="1.0.0"
+    version="1.0.0",
+    # ── FIX: prevent 307 redirects at the app level ──────────────────────
+    # Without this, POST /complaints → 307 → /complaints/ which causes
+    # Node fetch to re-slice the already-consumed ArrayBuffer in the BFF.
+    redirect_slashes=False,
 )
 
 # Ensure uploads directory exists
