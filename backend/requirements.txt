@@ -1,18 +1,38 @@
-fastapi
-uvicorn
-sqlalchemy
-psycopg2-binary
-pydantic
-python-dotenv
-alembic
-python-multipart
-onnxruntime
-numpy
-pandas
-xgboost
-python-jose[cryptography]
-passlib[bcrypt]
-apscheduler
+# ── Web Framework ─────────────────────────────────────────────────────────────
+fastapi==0.128.0
+uvicorn==0.40.0
+python-multipart==0.0.20         # multipart/form-data uploads
+
+# ── Database ──────────────────────────────────────────────────────────────────
+sqlalchemy==2.0.36
+psycopg2-binary==2.9.11          # PostgreSQL driver
+alembic==1.14.0                  # DB migrations
+
+# ── Validation & Settings ─────────────────────────────────────────────────────
+pydantic==2.12.5
+python-dotenv==1.0.1
+
+# ── Auth & Security ───────────────────────────────────────────────────────────
+python-jose[cryptography]==3.3.0 # JWT signing/verification
+passlib[bcrypt]==1.7.4           # password hashing
+bcrypt==4.0.1                    # passlib bcrypt backend
+
+# ── HTTP Client ───────────────────────────────────────────────────────────────
+requests==2.32.5
+
+# ── ML / Data Science ────────────────────────────────────────────────────────
+numpy==1.26.4
+pandas==2.3.3
+scikit-learn==1.8.0
+xgboost==3.2.0
+onnxruntime==1.24.4
+
+# ── Image Processing ──────────────────────────────────────────────────────────
+Pillow==12.0.0                   # imported as PIL
+pytesseract==0.3.13              # OCR for image evidence
+
+# ── Background Jobs ───────────────────────────────────────────────────────────
+apscheduler==3.11.2
+
+# ── Email ─────────────────────────────────────────────────────────────────────
 fastapi-mail
-pytesseract
-scikit-learn
