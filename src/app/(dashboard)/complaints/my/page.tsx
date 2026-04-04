@@ -89,17 +89,19 @@ export default function MyComplaintsPage() {
                   <th>Brand</th>
                   <th>Status</th>
                   <th>Score</th>
+                  <th />
                 </tr>
               </thead>
               <tbody>
                 {rows.map((c, i) => {
+                  const id = String(c.id ?? "");
                   const cn = String(c.caseNumber ?? c.case_number ?? "—");
                   const typ = String(c.type ?? "—").replace(/_/g, " ");
                   const brand = String(c.brandName ?? c.brand_name ?? "—");
                   const st = String(c.status ?? "—").toUpperCase();
                   const score = c.score != null ? Number(c.score) : null;
                   return (
-                    <tr key={cn + i}>
+                    <tr key={id || cn + i}>
                       <td className="font-mono text-xs font-bold">{cn}</td>
                       <td className="text-xs capitalize">{typ}</td>
                       <td className="text-xs font-bold">{brand}</td>
@@ -107,6 +109,18 @@ export default function MyComplaintsPage() {
                         <span className={`status-pill status-${st.toLowerCase()}`}>{st}</span>
                       </td>
                       <td className="text-xs font-mono">{score != null ? score.toFixed(0) : "—"}</td>
+                      <td>
+                        {id ? (
+                          <Link
+                            href={`/complaints/${id}`}
+                            className="text-[10px] font-black uppercase tracking-wide text-accent-gold underline"
+                          >
+                            View
+                          </Link>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
                     </tr>
                   );
                 })}

@@ -22,9 +22,9 @@ export default function DashboardLayout({
   ];
 
   return (
-    <div className="min-h-screen min-h-[100dvh] bg-[var(--cream)]">
+    <div className="min-h-screen min-h-[100dvh] bg-[var(--cream)] md:flex md:min-h-[100dvh] md:flex-row md:items-stretch">
       <Sidebar />
-      <main className="mx-auto w-full max-w-[min(100rem,100%)] px-[var(--page-gutter)] pb-[max(5.5rem,env(safe-area-inset-bottom,0px))] pt-[var(--nav-offset)] md:ml-[var(--sidebar-w)] md:pb-10">
+      <main className="mx-auto w-full min-w-0 max-w-[min(100rem,100%)] flex-1 px-[var(--page-gutter)] pb-[max(5.5rem,env(safe-area-inset-bottom,0px))] pt-[var(--nav-offset)] md:mx-0 md:max-w-none md:pb-10">
         <div className="py-6 md:py-8 lg:py-10">{children}</div>
       </main>
 

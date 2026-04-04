@@ -1,18 +1,29 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { signOut } from "next-auth/react";
+import { signOut, useSession } from "next-auth/react";
+import { fetchDashboardSummary } from "@/lib/api";
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const { data: session } = useSession();
+  const [activeCount, setActiveCount] = useState<number | null>(null);
 
   const categories = [
     {
       title: "OVERVIEW",
       items: [
-        { name: "My Cases", href: "/dashboard", badge: { count: 4, type: "gold" }, dotColor: "bg-[var(--gold)]" },
+        {
+          name: "My Cases",
+          href: "/dashboard",
+          badge:
+            activeCount != null && activeCount > 0
+              ? { count: activeCount, type: "gold" as const }
+              : undefined,
+          dotColor: "bg-[var(--gold)]",
+        },
         { name: "All Records", href: "/complaints", dotColor: "bg-[#8B8B82] opacity-40" },
       ],
     },
@@ -33,10 +44,29 @@ export default function Sidebar() {
     },
   ];
 
+  useEffect(() => {
+    const email = session?.user?.email;
+    if (!email) {
+      setActiveCount(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const s = await fetchDashboardSummary(email);
+        if (!cancelled) setActiveCount(s.activeCases);
+      } catch {
+        if (!cancelled) setActiveCount(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.user?.email]);
+
   return (
     <aside
-      className="sidebar-fill fixed left-0 z-40 hidden w-[var(--sidebar-w)] flex-col border-r border-[var(--border)] bg-[var(--cream)] pt-8 md:flex"
-      style={{ top: "var(--nav-offset)" }}
+      className="sidebar-fill z-30 hidden w-[var(--sidebar-w)] shrink-0 flex-col border-r border-[var(--border)] bg-[var(--cream)] pt-8 md:sticky md:top-[var(--nav-offset)] md:flex md:self-start"
     >
       <nav className="flex-1 overflow-y-auto overflow-x-hidden px-6 lg:px-7">
         {categories.map((category, idx) => (

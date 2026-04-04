@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { Search, ChevronUp, Clock } from "lucide-react";
-import { apiFetchJson, getApiUrl } from "@/lib/api";
+import { apiFetchJson, apiFetchPublic } from "@/lib/api";
 
 type Complaint = {
   id: string;
@@ -29,13 +29,12 @@ export default function ComplaintsPage() {
     setLoading(true);
     setError(null);
     try {
-      const API_URL = getApiUrl();
       const params = new URLSearchParams();
       if (q.trim()) params.set("q", q.trim());
 
       const [feedData, trendingData] = await Promise.all([
-        apiFetchJson<Complaint[]>(`/complaints?${params.toString()}`, null),
-        apiFetchJson<Complaint[]>("/complaints/trending", null),
+        apiFetchPublic<Complaint[]>(`/complaints?${params.toString()}`),
+        apiFetchPublic<Complaint[]>("/complaints/trending"),
       ]);
 
       setComplaints(feedData);

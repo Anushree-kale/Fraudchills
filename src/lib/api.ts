@@ -2,6 +2,12 @@
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+/** Browser calls go through same-origin BFF to avoid CORS and to attach session safely. */
+function resolveApiBase(): string {
+  if (typeof window !== "undefined") return "/api/bff";
+  return API_URL;
+}
+
 export function getApiUrl() {
   return API_URL;
 }
@@ -36,6 +42,18 @@ export async function apiFetchJson<T>(
   email: string | undefined | null,
   init?: RequestInit
 ): Promise<T> {
+  if (typeof window !== "undefined") {
+    if (!email) throw new Error("Sign in required.");
+    const res = await fetch(`${resolveApiBase()}${path}`, {
+      ...init,
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        ...init?.headers,
+      },
+    });
+    return handleResponse<T>(res);
+  }
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
     headers: { ...authHeaders(email), ...init?.headers },
@@ -44,7 +62,10 @@ export async function apiFetchJson<T>(
 }
 
 export async function apiFetchPublic<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, init);
+  const res = await fetch(`${resolveApiBase()}${path}`, {
+    ...init,
+    credentials: typeof window !== "undefined" ? "include" : init?.credentials,
+  });
   return handleResponse<T>(res);
 }
 
@@ -153,8 +174,16 @@ export interface MlHealth {
   featureColumns: string[];
 }
 
+export interface FraudPredictResult {
+  riskScore: number;
+  flagged: boolean;
+  reason: string;
+}
+
 export interface ActiveCase {
   caseId: string;
+  /** UUID for API routes (/complaints/:id, timeline, etc.) */
+  complaintId: string;
   title: string;
   amount: number;
   status: string;
@@ -218,6 +247,14 @@ export function normalizeMlHealth(raw: Record<string, unknown>): MlHealth {
     modelLoaded: Boolean(raw.modelLoaded ?? raw.model_loaded),
     datasetRows: Number(raw.datasetRows ?? raw.dataset_rows ?? 0),
     featureColumns: (raw.featureColumns ?? raw.feature_columns ?? []) as string[],
+  };
+}
+
+export function normalizeFraudPredict(raw: Record<string, unknown>): FraudPredictResult {
+  return {
+    riskScore: Number(raw.riskScore ?? raw.risk_score ?? 0),
+    flagged: Boolean(raw.flagged),
+    reason: String(raw.reason ?? ""),
   };
 }
 
@@ -329,6 +366,32 @@ export async function fetchMlHealth(): Promise<MlHealth> {
   return normalizeMlHealth(raw);
 }
 
+export async function predictFraud(
+  email: string,
+  payload: {
+    amount?: number;
+    ipAddress?: string;
+    deviceFingerprint?: string;
+    cardLast4?: string;
+    numOrdersLast24h?: number;
+    complaintId?: string | null;
+  }
+): Promise<FraudPredictResult> {
+  const body = {
+    amount: payload.amount ?? 0,
+    ip_address: payload.ipAddress ?? "",
+    device_fingerprint: payload.deviceFingerprint ?? "",
+    card_last4: payload.cardLast4 ?? "",
+    num_orders_last_24h: payload.numOrdersLast24h ?? 0,
+    complaint_id: payload.complaintId ?? null,
+  };
+  const raw = await apiFetchJson<Record<string, unknown>>("/predict-fraud", email, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return normalizeFraudPredict(raw);
+}
+
 // ── Cases API ────────────────────────────────────────────────────────────────
 
 export interface CasesFilter {
@@ -336,6 +399,28 @@ export interface CasesFilter {
   pageSize?: number;
   status?: string;
   q?: string;
+}
+
+function normalizeActiveCasesPage(raw: Record<string, unknown>): ActiveCasesPage {
+  const itemsRaw = raw.items as unknown[] | undefined;
+  const items: ActiveCase[] = Array.isArray(itemsRaw)
+    ? itemsRaw.map((row) => {
+        const r = row as Record<string, unknown>;
+        return {
+          caseId: String(r.caseId ?? r.case_id ?? ""),
+          complaintId: String(r.complaintId ?? r.complaint_id ?? ""),
+          title: String(r.title ?? ""),
+          amount: Number(r.amount ?? 0),
+          status: String(r.status ?? ""),
+        };
+      })
+    : [];
+  return {
+    items,
+    total: Number(raw.total ?? 0),
+    page: Number(raw.page ?? 1),
+    pageSize: Number(raw.pageSize ?? raw.page_size ?? 20),
+  };
 }
 
 export async function fetchActiveCases(
@@ -348,7 +433,11 @@ export async function fetchActiveCases(
   if (filters.status) params.set("status", filters.status);
   if (filters.q) params.set("q", filters.q);
   const qs = params.toString();
-  return apiFetchJson<ActiveCasesPage>(`/cases/active${qs ? `?${qs}` : ""}`, email);
+  const raw = await apiFetchJson<Record<string, unknown>>(
+    `/cases/active${qs ? `?${qs}` : ""}`,
+    email
+  );
+  return normalizeActiveCasesPage(raw);
 }
 
 // ── Dashboard API ─────────────────────────────────────────────────────────────
@@ -366,11 +455,15 @@ export async function fetchDashboardSummary(email: string): Promise<DashboardSum
 // ── Upload API ────────────────────────────────────────────────────────────────
 
 export async function uploadFile(file: File, email: string): Promise<{ fileUrl: string }> {
+  if (!email) throw new Error("Sign in required.");
   const formData = new FormData();
   formData.append("file", file);
-  const res = await fetch(`${API_URL}/upload`, {
+  const base = typeof window !== "undefined" ? "/api/bff" : API_URL;
+  const headers: HeadersInit =
+    typeof window !== "undefined" ? {} : { "X-User-Email": email };
+  const res = await fetch(`${base}/upload`, {
     method: "POST",
-    headers: { "X-User-Email": email },
+    headers,
     body: formData,
   });
   return handleResponse<{ fileUrl: string }>(res);

@@ -35,11 +35,16 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 # Mount static files for serving uploads
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
-# CORS middleware — must be before routes
-CLIENT_URL = os.getenv("CLIENT_URL", "http://localhost:3000")
+# CORS middleware — must be before routes (comma-separated for localhost + 127.0.0.1, etc.)
+_default_origins = "http://localhost:3000,http://127.0.0.1:3000"
+CLIENT_ORIGINS = [
+    o.strip()
+    for o in os.getenv("CLIENT_URL", _default_origins).split(",")
+    if o.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[CLIENT_URL],
+    allow_origins=CLIENT_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

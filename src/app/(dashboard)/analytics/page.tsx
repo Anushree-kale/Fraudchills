@@ -241,8 +241,6 @@ export default function AnalyticsPage() {
       style={{
         maxWidth: "var(--content-max)",
         margin: "0 auto",
-        padding: "clamp(1.5rem,4vw,2.5rem) var(--page-gutter)",
-        paddingTop: "calc(var(--nav-offset) + clamp(1.5rem,4vw,2.5rem))",
       }}
     >
       {/* Header */}

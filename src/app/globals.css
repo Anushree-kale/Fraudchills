@@ -6,7 +6,8 @@
   /* Layout */
   --nav-h: 3.5rem;
   --nav-offset: calc(var(--nav-h) + env(safe-area-inset-top, 0px));
-  --sidebar-w: 15rem;
+  /* Sidebar column width (~200px); keep in sync with dashboard flex + aside */
+  --sidebar-w: 12.5rem;
   --mobile-tab-h: 4rem;
   --page-gutter: clamp(1rem, 4vw, 2.25rem);
   --section-y: clamp(4rem, 10vw, 7rem);

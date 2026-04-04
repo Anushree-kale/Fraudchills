@@ -171,8 +171,6 @@ export default function DashboardPage() {
       style={{
         maxWidth: "var(--content-max)",
         margin: "0 auto",
-        padding: "clamp(1.5rem,4vw,2.5rem) var(--page-gutter)",
-        paddingTop: "calc(var(--nav-offset) + clamp(1.5rem,4vw,2rem))",
       }}
     >
       {/* Header */}
@@ -216,13 +214,15 @@ export default function DashboardPage() {
           style={{
             display: "inline-flex",
             alignItems: "center",
+            justifyContent: "center",
             gap: 8,
-            padding: "0.7rem 1.4rem",
+            minHeight: "44px",
+            padding: "0.65rem 1.25rem",
             background: "var(--black)",
             color: "#fff",
-            fontSize: "0.75rem",
+            fontSize: "clamp(0.68rem, 1.5vw, 0.8rem)",
             fontWeight: 700,
-            letterSpacing: "0.12em",
+            letterSpacing: "0.1em",
             textTransform: "uppercase",
             borderRadius: 2,
             whiteSpace: "nowrap",
@@ -255,7 +255,7 @@ export default function DashboardPage() {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+            gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 10.5rem), 1fr))",
             gap: "1rem",
             marginBottom: "2rem",
           }}
@@ -433,7 +433,11 @@ export default function DashboardPage() {
           >
             No cases found.{" "}
             <Link href="/complaints/new" style={{ color: "var(--gold)", fontWeight: 600 }}>
-              File your first complaint →
+              File your first complaint
+            </Link>
+            {" · "}
+            <Link href="/complaints/my" style={{ color: "var(--gold)", fontWeight: 600 }}>
+              My cases list →
             </Link>
           </div>
         ) : (
@@ -522,7 +526,11 @@ export default function DashboardPage() {
                       </td>
                       <td style={{ padding: "0.85rem 1.25rem" }}>
                         <Link
-                          href={`/complaints/${c.caseId}`}
+                          href={
+                            c.complaintId
+                              ? `/complaints/${c.complaintId}`
+                              : "/complaints/my"
+                          }
                           style={{
                             fontSize: "0.72rem",
                             fontWeight: 700,

@@ -341,9 +341,14 @@ class DashboardSummaryOut(BaseModel):
 
 class ActiveCaseOut(BaseModel):
     case_id: str
+    complaint_id: UUID
     title: str
     amount: float
     status: str
+
+    class Config:
+        alias_generator = to_camel
+        populate_by_name = True
 
 
 class ActiveCasesPage(BaseModel):

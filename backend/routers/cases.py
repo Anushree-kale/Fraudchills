@@ -69,6 +69,7 @@ def list_active_cases(
     items = [
         schemas.ActiveCaseOut(
             case_id=c.case_number,
+            complaint_id=c.id,
             title=_title(c),
             amount=float(c.amount or 0),
             status=ui_status(c.status),
