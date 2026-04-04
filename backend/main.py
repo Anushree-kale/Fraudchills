@@ -1,0 +1,128 @@
+import json
+import os
+import shutil
+import uuid
+from uuid import UUID
+
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy.orm import Session
+
+from auth import get_current_user
+from database import Base, engine, get_db
+from jobs import start_scheduler
+import models
+import schemas
+from routers import activity, admin, analytics, api, auth_api, brands, cases, complaints, dashboard, users
+
+# Create tables
+Base.metadata.create_all(bind=engine)
+
+# Start background jobs
+start_scheduler()
+
+app = FastAPI(
+    title="Fraudchills API",
+    description="Backend for the Fraudchills Platform",
+    version="1.0.0"
+)
+
+# Ensure uploads directory exists
+UPLOAD_DIR = "uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+# Mount static files for serving uploads
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+
+# CORS middleware — must be before routes
+CLIENT_URL = os.getenv("CLIENT_URL", "http://localhost:3000")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[CLIENT_URL],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ── File Upload ────────────────────────────────────────────────────────────────
+ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4", ".pdf"}
+MAX_FILE_SIZE_MB = 10
+
+@app.post("/upload", tags=["Upload"])
+async def upload_file(
+    file: UploadFile = File(...),
+    current_user: models.User = Depends(get_current_user),
+):
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail=f"File type '{ext}' not allowed.")
+
+    # Read and check size
+    contents = await file.read()
+    size_mb = len(contents) / (1024 * 1024)
+    if size_mb > MAX_FILE_SIZE_MB:
+        raise HTTPException(status_code=400, detail=f"File exceeds {MAX_FILE_SIZE_MB}MB limit.")
+
+    unique_filename = f"{uuid.uuid4()}{ext}"
+    file_path = os.path.join(UPLOAD_DIR, unique_filename)
+
+    with open(file_path, "wb") as buffer:
+        buffer.write(contents)
+
+    return {"fileUrl": f"http://localhost:8000/uploads/{unique_filename}"}
+
+# ── Routers ────────────────────────────────────────────────────────────────────
+app.include_router(complaints.router, prefix="/complaints", tags=["Complaints"])
+app.include_router(brands.router, prefix="/brands", tags=["Brands"])
+app.include_router(admin.router, prefix="/admin", tags=["Admin"])
+app.include_router(api.router, prefix="/api", tags=["B2B API"])
+app.include_router(analytics.router, prefix="/analytics", tags=["Analytics"])
+app.include_router(users.router, prefix="/users", tags=["Users"])
+app.include_router(auth_api.router, prefix="/auth", tags=["Auth"])
+app.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboard"])
+app.include_router(cases.router, prefix="/cases", tags=["Cases"])
+app.include_router(activity.router, prefix="/activity", tags=["Activity"])
+
+# ── Health ─────────────────────────────────────────────────────────────────────
+@app.get("/", tags=["Health"])
+def read_root():
+    return {"message": "Fraudchills API is running", "version": "1.0.0"}
+
+
+@app.post(
+    "/predict-fraud",
+    response_model=schemas.FraudPredictResponse,
+    tags=["ML"],
+)
+def predict_fraud(
+    body: schemas.FraudPredictRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Real-time fraud score (0–1) with audit row in fraud_logs."""
+    from ml.predict_fraud import score_request
+
+    risk, flagged, reason = score_request(body)
+    complaint_uuid = None
+    if body.complaint_id:
+        try:
+            complaint_uuid = UUID(body.complaint_id)
+        except ValueError:
+            complaint_uuid = None
+
+    log = models.FraudLog(
+        complaint_id=complaint_uuid,
+        user_id=current_user.id,
+        risk_score=risk,
+        reason=reason,
+        raw_payload=json.dumps(body.model_dump()),
+    )
+    db.add(log)
+    db.commit()
+
+    return schemas.FraudPredictResponse(risk_score=risk, flagged=flagged, reason=reason)
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
