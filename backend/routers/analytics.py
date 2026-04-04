@@ -45,19 +45,19 @@ def get_analytics_summary(
     avg_risk_score = db.query(func.avg(models.Complaint.score)).scalar() or 0.0
     high_risk_count = db.query(func.count(models.Complaint.id)).filter(models.Complaint.score >= 70).scalar() or 0
 
-    # Type breakdown
+    # Type breakdown - cast keys to str to satisfy Pydantic dict[str, int]
     types = db.query(models.Complaint.type, func.count(models.Complaint.id)).group_by(models.Complaint.type).all()
-    complaints_by_type = {t[0]: t[1] for t in types}
+    complaints_by_type = {str(t[0] or "UNKNOWN"): int(t[1] or 0) for t in types}
 
-    # Status breakdown
+    # Status breakdown - cast keys to str
     statuses = db.query(models.Complaint.status, func.count(models.Complaint.id)).group_by(models.Complaint.status).all()
-    complaints_by_status = {s[0]: s[1] for s in statuses}
+    complaints_by_status = {str(s[0] or "UNKNOWN"): int(s[1] or 0) for s in statuses}
 
     return schemas.AnalyticsSummary(
         total_complaints=total_complaints,
         resolved_count=resolved_count,
         resolution_rate=round(resolution_rate, 2),
-        avg_risk_score=round(avg_risk_score, 2),
+        avg_risk_score=round(float(avg_risk_score or 0.0), 2),
         high_risk_count=high_risk_count,
         complaints_by_type=complaints_by_type,
         complaints_by_status=complaints_by_status
@@ -118,6 +118,6 @@ def get_top_brands(
             brand_name=t.brand_name,
             count=t.count,
             avg_score=round(t.avg_score or 0.0, 2),
-            resolved_count=t.resolved_count
+            resolved_count=int(t.resolved_count or 0)
         ) for t in top_brands
     ]

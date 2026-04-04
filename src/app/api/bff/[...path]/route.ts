@@ -24,8 +24,12 @@ const HOP_BY_HOP = new Set([
 export const dynamic = "force-dynamic";
 
 async function resolveUserEmail(req: NextRequest): Promise<string | undefined> {
-  const session = await getServerSession(authOptions);
-  if (session?.user?.email) return session.user.email;
+  try {
+    const session = await getServerSession(authOptions);
+    if (session?.user?.email) return session.user.email;
+  } catch (err) {
+    console.error("[BFF Auth Error] Failed to get session:", err);
+  }
 
   const secret = process.env.NEXTAUTH_SECRET;
   if (!secret) return undefined;
@@ -37,8 +41,8 @@ async function resolveUserEmail(req: NextRequest): Promise<string | undefined> {
       secret,
     });
     if (token?.email && typeof token.email === "string") return token.email;
-  } catch {
-    /* ignore */
+  } catch (err) {
+    console.error("[BFF Auth Error] JWT decode failed:", err);
   }
   return undefined;
 }
@@ -49,36 +53,56 @@ async function proxy(req: NextRequest, pathSegments: string[]) {
     return NextResponse.json({ detail: "Missing backend path." }, { status: 400 });
   }
 
-  const email = await resolveUserEmail(req);
-  const incoming = new URL(req.url);
-  const target = `${BACKEND}/${subpath}${incoming.search}`;
+  try {
+    const email = await resolveUserEmail(req);
+    const incoming = new URL(req.url);
+    const target = `${BACKEND}/${subpath}${incoming.search}`;
 
-  const headers = new Headers();
-  req.headers.forEach((value, key) => {
-    if (HOP_BY_HOP.has(key.toLowerCase())) return;
-    headers.set(key, value);
-  });
+    const headers = new Headers();
+    req.headers.forEach((value, key) => {
+      if (HOP_BY_HOP.has(key.toLowerCase())) return;
+      headers.set(key, value);
+    });
 
-  if (email) {
-    headers.set("X-User-Email", email);
+    if (email) {
+      headers.set("X-User-Email", email);
+    }
+
+    const init: RequestInit = {
+      method: req.method,
+      headers,
+      cache: "no-store",
+      // @ts-ignore - 'duplex' is required when forwarding a stream in fetch
+      duplex: "half",
+    };
+
+    // Forward the request body as a stream for non-GET/HEAD methods
+    // This fixes the 'detached ArrayBuffer' issue caused by calling req.arrayBuffer()
+    if (req.method !== "GET" && req.method !== "HEAD" && req.body) {
+      init.body = req.body;
+    }
+
+    const res = await fetch(target, init);
+
+    // Stream the response body back to the client
+    const out = new NextResponse(res.body, { status: res.status });
+    
+    // Forward relevant headers (like content-type)
+    const ct = res.headers.get("content-type");
+    if (ct) out.headers.set("content-type", ct);
+    
+    return out;
+  } catch (err: any) {
+    console.error(`[BFF Proxy Error] ${req.method} ${subpath}:`, err);
+    return NextResponse.json(
+      { 
+        detail: "Internal Proxy Error", 
+        message: err.message,
+        path: subpath 
+      }, 
+      { status: 500 }
+    );
   }
-
-  const init: RequestInit = {
-    method: req.method,
-    headers,
-    cache: "no-store",
-  };
-
-  if (req.method !== "GET" && req.method !== "HEAD") {
-    init.body = await req.arrayBuffer();
-  }
-
-  const res = await fetch(target, init);
-  const body = await res.arrayBuffer();
-  const out = new NextResponse(body, { status: res.status });
-  const ct = res.headers.get("content-type");
-  if (ct) out.headers.set("content-type", ct);
-  return out;
 }
 
 type RouteCtx = { params: Promise<{ path: string[] }> };

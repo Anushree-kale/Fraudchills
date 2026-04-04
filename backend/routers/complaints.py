@@ -78,7 +78,6 @@ def get_trending_complaints(db: Session = Depends(get_db)):
         )
     return trending
 
-
 # ── GET /complaints/{id} ───────────────────────────────────────────────────────
 @router.get("/{complaint_id}", response_model=schemas.Complaint)
 def get_complaint(complaint_id: UUID, db: Session = Depends(get_db)):

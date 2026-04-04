@@ -7,10 +7,12 @@ import {
   fetchDashboardSummary,
   fetchActiveCases,
   fetchFraudCategories,
+  fetchTrendingComplaints,
   type DashboardSummary,
   type ActiveCase,
   type ActiveCasesPage,
   type FraudCategory,
+  type Complaint,
 } from "@/lib/api";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -87,6 +89,97 @@ function SummaryCard({
   );
 }
 
+function TrendingCard({ complaint }: { complaint: Complaint }) {
+  const sc = statusColor(complaint.status);
+  return (
+    <Link
+      href={`/complaints/${complaint.id}`}
+      style={{
+        display: "block",
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        borderRadius: "var(--radius)",
+        padding: "1.25rem",
+        textDecoration: "none",
+        transition: "all 0.2s ease",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: "0.75rem",
+        }}
+      >
+        <span
+          style={{
+            fontSize: "0.65rem",
+            fontWeight: 700,
+            color: "var(--muted)",
+            letterSpacing: "0.1em",
+          }}
+        >
+          {complaint.caseNumber}
+        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <span style={{ fontSize: "0.7rem", fontWeight: 800, color: "var(--gold)" }}>
+            {complaint.upvotesCount}
+          </span>
+          <span style={{ fontSize: "0.6rem", fontWeight: 700, color: "var(--muted)" }}>UPVOTES</span>
+        </div>
+      </div>
+      <h3
+        style={{
+          fontSize: "1rem",
+          fontWeight: 700,
+          color: "var(--black)",
+          marginBottom: "0.5rem",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {complaint.brandName}
+      </h3>
+      <p
+        style={{
+          fontSize: "0.8rem",
+          color: "var(--muted)",
+          marginBottom: "1.25rem",
+          display: "-webkit-box",
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: "vertical",
+          overflow: "hidden",
+          lineHeight: 1.5,
+          height: "2.4rem",
+        }}
+      >
+        {complaint.details}
+      </p>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span
+          style={{
+            padding: "0.2rem 0.6rem",
+            borderRadius: 99,
+            fontSize: "0.62rem",
+            fontWeight: 700,
+            letterSpacing: "0.05em",
+            background: sc.bg,
+            color: sc.color,
+            textTransform: "uppercase",
+          }}
+        >
+          {complaint.status}
+        </span>
+        <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--black)" }}>
+          {complaint.amount > 0 ? `₹${complaint.amount.toLocaleString()}` : "—"}
+        </span>
+      </div>
+    </Link>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 const PAGE_SIZE = 10;
@@ -99,6 +192,7 @@ export default function DashboardPage() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [casesPage, setCasesPage] = useState<ActiveCasesPage | null>(null);
   const [categories, setCategories] = useState<FraudCategory[]>([]);
+  const [trending, setTrending] = useState<Complaint[]>([]);
   const [page, setPage] = useState(1);
   const [statusFilter, setStatus] = useState("");
   const [search, setSearch] = useState("");
@@ -106,17 +200,19 @@ export default function DashboardPage() {
   const [casesLoading, setCasesLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // initial load — summary + categories
+  // initial load — summary + categories + trending
   useEffect(() => {
     if (!email) return;
     (async () => {
       try {
-        const [sum, cats] = await Promise.all([
+        const [sum, cats, trend] = await Promise.all([
           fetchDashboardSummary(email),
           fetchFraudCategories(email),
+          fetchTrendingComplaints(),
         ]);
         setSummary(sum);
         setCategories(cats);
+        setTrending(trend);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to load dashboard.");
       } finally {
@@ -332,6 +428,49 @@ export default function DashboardPage() {
               <span style={{ color: "var(--muted)" }}>{cat.percentage.toFixed(0)}%</span>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Trending Reports Section */}
+      {!loading && trending.length > 0 && (
+        <div style={{ marginBottom: "2.5rem" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "baseline",
+              marginBottom: "1rem",
+            }}
+          >
+            <h2
+              style={{
+                fontSize: "0.75rem",
+                fontWeight: 800,
+                letterSpacing: "0.15em",
+                textTransform: "uppercase",
+                color: "var(--muted)",
+              }}
+            >
+              Trending Reports
+            </h2>
+            <Link
+              href="/complaints"
+              style={{ fontSize: "0.72rem", fontWeight: 700, color: "var(--gold)" }}
+            >
+              EXPLORE ALL →
+            </Link>
+          </div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+              gap: "1rem",
+            }}
+          >
+            {trending.slice(0, 3).map((c) => (
+              <TrendingCard key={c.id} complaint={c} />
+            ))}
+          </div>
         </div>
       )}
 

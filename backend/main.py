@@ -14,6 +14,13 @@ from database import Base, engine, get_db
 from jobs import start_scheduler
 import models
 import schemas
+from dotenv import load_dotenv
+
+# Try loading from current dir, then from parent (root)
+load_dotenv()
+if not os.getenv("DATABASE_URL"):
+    load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
+
 from routers import activity, admin, analytics, api, auth_api, brands, cases, complaints, dashboard, users
 
 # Create tables

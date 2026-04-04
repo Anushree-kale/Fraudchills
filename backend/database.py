@@ -4,9 +4,10 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from dotenv import load_dotenv
 
-# Load env from parent directory
-env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
-load_dotenv(dotenv_path=env_path)
+# Try loading from current dir, then from parent (root)
+load_dotenv()
+if not os.getenv("DATABASE_URL"):
+    load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
