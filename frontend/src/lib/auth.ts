@@ -85,6 +85,15 @@ export const authOptions: NextAuthOptions = {
   // Check your Vercel logs to see the exact URL being sent to Google.
   debug: true,
   callbacks: {
+    // Force all redirects to use the production domain, ignoring any temporary Vercel URLs.
+    async redirect({ url, baseUrl }) {
+      const productionUrl = process.env.NEXTAUTH_URL || baseUrl;
+      // If the redirect URL is relative, use the production base.
+      if (url.startsWith("/")) return `${productionUrl.replace(/\/$/, "")}${url}`;
+      // Allow redirects to the same origin.
+      if (new URL(url).origin === new URL(productionUrl).origin) return url;
+      return productionUrl;
+    },
     async session({ session, user }: { session: any; user: any }) {
       if (session?.user && user) {
         session.user.id = user.id;
@@ -93,4 +102,6 @@ export const authOptions: NextAuthOptions = {
       return session;
     },
   },
+  // Redundantly provide secret for Edge Runtime stability
+  secret: process.env.NEXTAUTH_SECRET,
 };
