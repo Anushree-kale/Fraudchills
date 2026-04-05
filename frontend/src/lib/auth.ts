@@ -81,7 +81,9 @@ export const authOptions: NextAuthOptions = {
     signIn: "/auth/signin",
     newUser: "/auth/signup",
   },
-  debug: process.env.NODE_ENV === "development",
+  // Enable debug in production temporarily to troubleshoot the redirect mismatch.
+  // Check your Vercel logs to see the exact URL being sent to Google.
+  debug: true,
   callbacks: {
     async session({ session, user }: { session: any; user: any }) {
       if (session?.user && user) {
