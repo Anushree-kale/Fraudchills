@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   fetchDashboardSummary,
@@ -185,9 +186,16 @@ function TrendingCard({ complaint }: { complaint: Complaint }) {
 const PAGE_SIZE = 10;
 
 export default function DashboardPage() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
+  const router = useRouter();
   const email = session?.user?.email;
   const displayName = session?.user?.name ?? "User";
+
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      router.replace("/auth/signin?callbackUrl=%2Fdashboard");
+    }
+  }, [status, router]);
 
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [casesPage, setCasesPage] = useState<ActiveCasesPage | null>(null);
@@ -243,6 +251,28 @@ export default function DashboardPage() {
   useEffect(() => {
     loadCases();
   }, [loadCases]);
+
+  if (status === "loading") {
+    return (
+      <div
+        style={{
+          minHeight: "60vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "var(--muted)",
+        }}
+      >
+        <p style={{ fontSize: "0.75rem", letterSpacing: "0.12em", textTransform: "uppercase" }}>
+          Loading session…
+        </p>
+      </div>
+    );
+  }
+
+  if (status === "unauthenticated") {
+    return null;
+  }
 
   if (!email) {
     return (

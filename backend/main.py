@@ -6,7 +6,7 @@ from uuid import UUID
 
 
 
-from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
@@ -69,6 +69,7 @@ MAX_FILE_SIZE_MB = 10
 
 @app.post("/upload", tags=["Upload"])
 async def upload_file(
+    request: Request,
     file: UploadFile = File(...),
     current_user: models.User = Depends(get_current_user),
 ):
@@ -88,7 +89,9 @@ async def upload_file(
     with open(file_path, "wb") as buffer:
         buffer.write(contents)
 
-    return {"fileUrl": f"http://localhost:8000/uploads/{unique_filename}"}
+    # Generate dynamic URL based on request host (works for localhost and Render)
+    base_url = str(request.base_url).rstrip("/")
+    return {"fileUrl": f"{base_url}/uploads/{unique_filename}"}
 
 # ── Routers ────────────────────────────────────────────────────────────────────
 app.include_router(complaints.router, prefix="/complaints", tags=["Complaints"])

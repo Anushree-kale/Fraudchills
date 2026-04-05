@@ -9,90 +9,70 @@ export default function Navbar() {
   const pathname = usePathname();
   const { data: session } = useSession();
 
-  const getInitials = (name: string | null | undefined) => {
-    if (!name) return "NK";
-    const parts = name.trim().split(" ");
-    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-    return parts[0].slice(0, 2).toUpperCase();
-  };
-
-  const displayName = session?.user?.name || "User";
-  const initials = session?.user?.name ? getInitials(session.user.name) : "U";
-
-  const navLinks = session
-    ? [
-        { name: "DASHBOARD", href: "/dashboard" },
-        { name: "TRENDING", href: "/complaints" },
-        { name: "ANALYTICS", href: "/analytics" },
-        { name: "DIRECTORY", href: "/brands" },
-      ]
-    : [
-        { name: "TRENDING", href: "/complaints" },
-        { name: "ANALYTICS", href: "/analytics" },
-        { name: "DIRECTORY", href: "/brands" },
-      ];
+  const navLinks = [
+    { name: "Trending", href: "/complaints" },
+    { name: "Analytics", href: "/analytics" },
+    { name: "Directory", href: "/brands" },
+  ];
 
   return (
-    <nav
-      className="fixed top-0 left-0 z-50 w-full border-b border-[var(--border)] bg-[var(--cream)]/95 backdrop-blur-md pt-[env(safe-area-inset-top,0px)]"
-      aria-label="Primary"
-    >
-      <div className="mx-auto flex h-[var(--nav-h)] w-full max-w-[100vw] items-center justify-between px-[var(--page-gutter)]">
-        <div className="flex min-w-0 shrink-0 items-center">
-          <Link
-            href="/"
-            className="flex items-center font-bebas text-[clamp(1.25rem,3.5vw,1.5rem)] leading-none tracking-tight text-[var(--black)] transition-[transform,opacity] duration-300 hover:opacity-90 active:scale-[0.98]"
-          >
-            FRAUDCHILLS<span className="text-[var(--gold)]">_</span>
+    <nav className="fixed top-0 left-0 z-[100] w-full h-[64px] border-b border-[var(--gold-20)] bg-[var(--cream)]/90 backdrop-blur-xl transition-all duration-500 hover:shadow-xl">
+      <div className="mx-auto flex h-full w-full max-w-[var(--content-max)] items-center justify-between px-8 lg:px-12">
+        
+        {/* Left: Logo */}
+        <div className="flex items-center">
+          <Link href="/" className="font-bebas text-2xl tracking-tighter transition-all hover:scale-105 active:scale-95 group">
+            <span className="text-[var(--gold)]">FRAUD</span>
+            <span className="text-[var(--obsidian)] group-hover:text-black transition-colors">CHILLS_</span>
           </Link>
         </div>
 
-        <div className="hidden min-w-0 items-center justify-center gap-6 md:flex md:gap-8 lg:gap-10">
+        {/* Center: Links */}
+        <div className="hidden items-center gap-12 md:flex">
           {navLinks.map((link) => {
-            const isActive = pathname.startsWith(link.href);
+            const isActive = pathname === link.href;
             return (
               <Link
                 key={link.name}
                 href={link.href}
-                className={`relative flex h-[var(--nav-h)] items-center text-[10px] font-bold tracking-[0.18em] transition-colors duration-200 ${
-                  isActive
-                    ? "text-[var(--black)]"
-                    : "text-[var(--muted)] after:absolute after:bottom-0 after:left-0 after:h-0.5 after:w-0 after:bg-[var(--gold)] after:transition-[width] after:duration-300 after:ease-out hover:text-[var(--black)] hover:after:w-full"
+                className={`font-mono text-[10px] uppercase tracking-[0.25em] transition-all duration-300 relative py-1 group ${
+                  isActive ? "text-[var(--gold)]" : "text-[var(--muted)] hover:text-[var(--obsidian)]"
                 }`}
               >
                 {link.name}
-                {isActive && (
-                  <span className="absolute bottom-0 left-0 h-0.5 w-full bg-[var(--gold)]" />
-                )}
+                <span className={`absolute bottom-0 left-0 w-full h-px bg-[var(--gold)] transition-transform duration-500 origin-left ${isActive ? "scale-x-100" : "scale-x-0 group-hover:scale-x-100"}`} />
               </Link>
             );
           })}
         </div>
 
-        <div className="flex shrink-0 items-center gap-3 sm:gap-4">
+        {/* Right: Auth */}
+        <div className="flex items-center gap-8">
           {session ? (
             <Link
               href="/dashboard"
-              className="group flex max-w-[10rem] cursor-pointer items-center gap-2 rounded-full border border-[#1A1A1A] bg-[#1A1A1A] py-1 pl-1 pr-3 text-white transition-[transform,background-color,box-shadow] duration-300 hover:bg-black hover:shadow-[0_8px_24px_rgba(0,0,0,0.2)] active:scale-[0.98] sm:max-w-none sm:pr-4"
+              className="flex items-center gap-3 group px-4 py-1.5 border border-transparent hover:border-[var(--gold-20)] rounded-full transition-all"
             >
-              <div className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full bg-[var(--gold)] pt-px text-[10px] font-bold text-[var(--black)] transition-transform duration-300 group-hover:scale-105">
-                {initials}
+              <div className="w-8 h-8 rounded-full bg-[var(--gold)] flex items-center justify-center font-bebas text-[11px] text-[var(--obsidian)] shadow-lg transition-transform group-hover:scale-110">
+                {session.user?.name?.slice(0, 2).toUpperCase() || "FC"}
               </div>
-              <span className="hidden truncate text-[11px] font-bold leading-none sm:inline">{displayName}</span>
+              <span className="font-mono text-[10px] uppercase tracking-widest text-[var(--obsidian)] hidden sm:inline">
+                Dashboard
+              </span>
             </Link>
           ) : (
             <>
               <Link
                 href="/auth/signin"
-                className="text-[10px] font-bold tracking-[0.14em] text-[var(--black)] uppercase transition-[color,transform] duration-200 hover:text-[var(--gold)] active:scale-[0.98]"
+                className="font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--muted)] hover:text-[var(--obsidian)] transition-all hover:translate-x-[-4px]"
               >
-                LOGIN
+                Login
               </Link>
               <Link
-                href="/auth/signin?callbackUrl=%2Fcomplaints%2Fnew"
-                className="bg-[var(--black)] px-3 py-2.5 text-[10px] font-bold tracking-[0.14em] text-white uppercase transition-[transform,background-color,box-shadow] duration-300 hover:bg-[#2A2A2A] hover:shadow-[0_6px_20px_rgba(0,0,0,0.18)] active:scale-[0.98] sm:px-5"
+                href="/auth/signin" 
+                className="bg-[var(--obsidian)] px-8 py-2.5 text-[10px] font-mono uppercase tracking-[0.25em] text-white transition-all hover:bg-black hover:shadow-[0_8px_30px_rgb(0,0,0,0.12)] active:scale-95"
               >
-                FILE RECORD
+                Get Access
               </Link>
             </>
           )}

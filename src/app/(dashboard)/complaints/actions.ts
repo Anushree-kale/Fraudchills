@@ -23,7 +23,7 @@ export async function submitComplaint(formData: FormData) {
   };
   console.log("Submitting complaint payload:", JSON.stringify(payload, null, 2));
 
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://fraudchills.onrender.com";
   try {
     const res = await fetch(`${API_URL}/complaints`, {
       method: "POST",

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Bebas_Neue, DM_Sans, DM_Mono } from "next/font/google";
+import { Bebas_Neue, Instrument_Sans, DM_Mono } from "next/font/google";
 import "./globals.css";
 import { SessionProvider } from "@/components/providers/SessionProvider";
 import Navbar from "@/components/Navbar";
@@ -10,9 +10,9 @@ const bebas = Bebas_Neue({
   variable: "--font-bebas" 
 });
 
-const dmSans = DM_Sans({ 
+const instrument = Instrument_Sans({ 
   subsets: ["latin"], 
-  variable: "--font-sans" 
+  variable: "--font-body" 
 });
 
 const dmMono = DM_Mono({ 
@@ -39,7 +39,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${bebas.variable} ${dmSans.variable} ${dmMono.variable}`}>
+    <html lang="en" className={`${bebas.variable} ${instrument.variable} ${dmMono.variable}`}>
       <body className="antialiased">
         <SessionProvider>
           <Navbar />

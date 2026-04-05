@@ -1,6 +1,6 @@
 // lib/api.ts  — typed fetch layer for Fraudchills backend
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://fraudchills.onrender.com";
 
 /** Browser calls go through same-origin BFF to avoid CORS and to attach session safely. */
 function resolveApiBase(): string {
