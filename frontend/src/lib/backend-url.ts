@@ -6,8 +6,9 @@ function normalizeBackendUrl(raw: string): string {
   try {
     const u = new URL(trimmed);
     // Render (and most hosts) redirect HTTP→HTTPS. fetch(..., { redirect: "error" }) throws on that.
-    const local = u.hostname === "localhost" || u.hostname === "127.0.0.1";
-    if (u.protocol === "http:" && !local) {
+    // If NEXT_PUBLIC_API_URL or BACKEND_URL starts with http://, it will be treated as-is 
+    // unless we are in a non-local environment. 
+    if (u.protocol === "http:" && process.env.NODE_ENV === "production") {
       u.protocol = "https:";
       return `${u.origin}${u.pathname}`.replace(/\/+$/, "") || u.origin;
     }

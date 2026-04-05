@@ -7,8 +7,6 @@ function buildPoolConfig(): PoolConfig {
     throw new Error('DATABASE_URL is not set');
   }
 
-  // Render / most hosted Postgres: TLS required for connections from outside their private network.
-  // Local Postgres typically has no SSL; don't force it on localhost.
   const hostMatch = connectionString.match(/@([^/:]+)/);
   const host = hostMatch?.[1] ?? '';
   const urlSaysRequire = /[?&]sslmode=require/i.test(connectionString);
@@ -19,7 +17,11 @@ function buildPoolConfig(): PoolConfig {
     host.endsWith('supabase.co');
 
   const config: PoolConfig = { connectionString };
-  if (looksRemote && !host.includes('localhost') && host !== '127.0.0.1') {
+  
+  // Default to SSL for Render/Neon/Supabase unless DATABASE_SSL is explicitly 'false'.
+  const sslEnabled = process.env.DATABASE_SSL !== 'false' && looksRemote;
+  
+  if (sslEnabled) {
     config.ssl = { rejectUnauthorized: false };
   }
   return config;

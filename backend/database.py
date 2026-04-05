@@ -14,12 +14,9 @@ if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL environment variable is not set.")
 
 # Render (and most managed Postgres providers) require SSL.
-# Skip sslmode for local connections so dev still works without a cert.
-_is_local = any(
-    host in DATABASE_URL
-    for host in ("localhost", "127.0.0.1", "0.0.0.0")
-)
-_connect_args = {} if _is_local else {"sslmode": "require"}
+# Default to "require" but allow override via DB_SSL_MODE (e.g. set to "prefer" or "disable" locally).
+_ssl_mode = os.getenv("DB_SSL_MODE", "require")
+_connect_args = {"sslmode": _ssl_mode}
 
 engine = create_engine(DATABASE_URL, connect_args=_connect_args)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
