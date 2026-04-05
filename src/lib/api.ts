@@ -37,6 +37,14 @@ async function handleResponse<T>(res: Response): Promise<T> {
   return res.json();
 }
 
+/** Headers for authenticated BFF calls from the browser (never call the public API URL from the client). */
+function bffJsonHeaders(email: string, init?: RequestInit): Headers {
+  const h = new Headers(init?.headers ?? undefined);
+  h.set("Content-Type", "application/json");
+  h.set("X-User-Email", email);
+  return h;
+}
+
 export async function apiFetchJson<T>(
   path: string,
   email: string | undefined | null,
@@ -47,16 +55,17 @@ export async function apiFetchJson<T>(
     const res = await fetch(`${resolveApiBase()}${path}`, {
       ...init,
       credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-        ...init?.headers,
-      },
+      headers: bffJsonHeaders(email, init),
     });
     return handleResponse<T>(res);
   }
+  if (!email) throw new Error("Sign in required.");
+  const serverHeaders = new Headers(init?.headers ?? undefined);
+  serverHeaders.set("Content-Type", "application/json");
+  serverHeaders.set("X-User-Email", email);
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
-    headers: { ...authHeaders(email), ...init?.headers },
+    headers: serverHeaders,
   });
   return handleResponse<T>(res);
 }
@@ -459,11 +468,11 @@ export async function uploadFile(file: File, email: string): Promise<{ fileUrl: 
   const formData = new FormData();
   formData.append("file", file);
   const base = typeof window !== "undefined" ? "/api/bff" : API_URL;
-  const headers: HeadersInit =
-    typeof window !== "undefined" ? {} : { "X-User-Email": email };
+  // Multipart: do not set Content-Type (browser sets boundary). Always send who is uploading.
   const res = await fetch(`${base}/upload`, {
     method: "POST",
-    headers,
+    credentials: typeof window !== "undefined" ? "include" : undefined,
+    headers: { "X-User-Email": email },
     body: formData,
   });
   return handleResponse<{ fileUrl: string }>(res);

@@ -1,16 +1,17 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, or_
+from sqlalchemy.exc import IntegrityError
 from typing import List, Optional
 from uuid import UUID
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import models
 import schemas
 from database import get_db
 from auth import get_current_user
 from cache_ttl import invalidate_user_dashboard
 from ml.scorer import score_complaint, risk_label
-from utils.spam import check_duplicate_complaint, verify_image_evidence
+from utils.spam import check_duplicate_complaint
 from utils.notifications import create_notification
 import random
 
@@ -33,11 +34,13 @@ def get_complaints(
     query = db.query(models.Complaint)
 
     if q:
-        # PostgreSQL Full-Text Search
-        query = query.filter(
-            func.to_tsvector('english', models.Complaint.details).op('@@')(func.to_tsquery('english', q.replace(" ", " & "))) |
-            models.Complaint.brand_name.ilike(f"%{q}%")
-        )
+        # ILIKE avoids PostgreSQL tsquery syntax errors on arbitrary user input (was crashing on e.g. ":" or "&").
+        q_clean = q.strip()
+        if q_clean:
+            like = f"%{q_clean}%"
+            query = query.filter(
+                or_(models.Complaint.brand_name.ilike(like), models.Complaint.details.ilike(like))
+            )
 
     if brand:
         query = query.filter(models.Complaint.brand_name.ilike(f"%{brand}%"))
@@ -61,7 +64,7 @@ def get_complaints(
 @router.get("/trending", response_model=List[schemas.Complaint])
 def get_trending_complaints(db: Session = Depends(get_db)):
     """Trending complaints based on upvotes in the last 7 days."""
-    seven_days_ago = datetime.now() - timedelta(days=7)
+    seven_days_ago = _utc_now() - timedelta(days=7)
 
     trending = (
         db.query(models.Complaint)
@@ -106,6 +109,18 @@ def get_complaint_timeline(complaint_id: UUID, db: Session = Depends(get_db)):
     return events
 
 
+def _utc_now():
+    return datetime.now(timezone.utc)
+
+
+def _as_utc(dt: datetime | None) -> datetime | None:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 @router.get("/{complaint_id}/sla", response_model=schemas.ComplaintSLA)
 def get_complaint_sla(complaint_id: UUID, db: Session = Depends(get_db)):
     """Simple SLA tracker payload for complaint trust UX."""
@@ -113,21 +128,25 @@ def get_complaint_sla(complaint_id: UUID, db: Session = Depends(get_db)):
     if not complaint:
         raise HTTPException(status_code=404, detail="Complaint not found.")
 
-    now = datetime.now()
-    total_hours_open = round((now - complaint.created_at).total_seconds() / 3600, 2)
+    now = _utc_now()
+    created = _as_utc(complaint.created_at) or now
+    total_hours_open = round((now - created).total_seconds() / 3600, 2)
     hours_remaining = None
     breached = False
     progress_pct = 100.0
 
     if complaint.deadline:
-        hours_remaining = round((complaint.deadline - now).total_seconds() / 3600, 2)
-        breached = hours_remaining < 0
-        total_window_hours = max((complaint.deadline - complaint.created_at).total_seconds() / 3600, 1)
-        elapsed = max((now - complaint.created_at).total_seconds() / 3600, 0)
-        progress_pct = max(0.0, min(100.0, round((elapsed / total_window_hours) * 100, 2)))
+        dl = _as_utc(complaint.deadline)
+        if dl:
+            hours_remaining = round((dl - now).total_seconds() / 3600, 2)
+            breached = hours_remaining < 0
+            total_window_hours = max((dl - created).total_seconds() / 3600, 1)
+            elapsed = max((now - created).total_seconds() / 3600, 0)
+            progress_pct = max(0.0, min(100.0, round((elapsed / total_window_hours) * 100, 2)))
 
     return schemas.ComplaintSLA(
         complaint_id=complaint.id,
+        status=complaint.status or "PENDING",
         created_at=complaint.created_at,
         deadline=complaint.deadline,
         now=now,
@@ -180,8 +199,9 @@ def calculate_risk_score(db: Session, payload: schemas.ComplaintCreate, current_
     if fraud_match:
         score = max(score, 95.0)
 
-    # User credibility score boost
-    user_cred_modifier = (current_user.credibility_score - 50) / 10
+    # User credibility score boost (column can be NULL in legacy rows)
+    cred = float(current_user.credibility_score) if current_user.credibility_score is not None else 50.0
+    user_cred_modifier = (cred - 50) / 10
     score -= user_cred_modifier
 
     return round(max(0.0, min(score, 100.0)), 2)
@@ -195,13 +215,12 @@ def create_complaint(
     current_user: models.User = Depends(get_current_user),
 ):
     """Submit a new complaint. Automatically ML-scored on creation."""
-
     import time
     start_t = time.time()
 
     # ── Spam Prevention ────────────────────────────────────────────────────────
     # 1. Rate limiting: 10 per 24h
-    last_24h = datetime.now() - timedelta(days=1)
+    last_24h = _utc_now() - timedelta(days=1)
     daily_count = db.query(func.count(models.Complaint.id)).filter(
         models.Complaint.user_id == current_user.id,
         models.Complaint.created_at >= last_24h
@@ -218,46 +237,55 @@ def create_complaint(
     # ── Rule-Based Risk Scoring ───────────────────────────────────────────────
     score = calculate_risk_score(db, payload, current_user)
 
-    # Generate Case Number
-    case_num = generate_case_number(db)
-
-    # Set deadline for brand response (7 days)
-    deadline = datetime.now() + timedelta(days=7)
-
-    complaint = models.Complaint(
-        case_number=case_num,
-        type=payload.type.upper(),
-        details=payload.details,
-        platform=payload.platform,
-        order_id=payload.order_id,
-        amount=payload.amount,
-        brand_name=payload.brand_name,
-        proof_urls=payload.proof_urls or [],
-        external_links=payload.external_links or [],
-        image_url=payload.image_url,
-        user_id=current_user.id,
-        score=score,
-        status="PENDING",
-        deadline=deadline,
-    )
-
-    db.add(complaint)
-    db.commit()
-    db.refresh(complaint)
-    print(f"DEBUG: DB Insert took {time.time() - start_t:.4f}s total")
-
-    # Log the filing event
-    event = models.ComplaintEvent(
-        complaint_id=complaint.id,
-        event_type="FILED",
-        note="Complaint filed by user.",
-    )
-    db.add(event)
-    db.commit()
+    deadline = _utc_now() + timedelta(days=7)
+    complaint: models.Complaint | None = None
+    for _ in range(12):
+        case_num = generate_case_number(db)
+        row = models.Complaint(
+            case_number=case_num,
+            type=payload.type.upper(),
+            details=payload.details,
+            platform=payload.platform,
+            order_id=payload.order_id,
+            amount=payload.amount,
+            brand_name=payload.brand_name,
+            proof_urls=payload.proof_urls or [],
+            external_links=payload.external_links or [],
+            image_url=payload.image_url,
+            user_id=current_user.id,
+            score=score,
+            status="PENDING",
+            deadline=deadline,
+        )
+        db.add(row)
+        try:
+            db.flush()
+            evt = models.ComplaintEvent(
+                complaint_id=row.id,
+                event_type="FILED",
+                note="Complaint filed by user.",
+            )
+            db.add(evt)
+            db.commit()
+            db.refresh(row)
+            complaint = row
+            break
+        except IntegrityError:
+            db.rollback()
+            complaint = None
+        except Exception:
+            db.rollback()
+            raise
+    if complaint is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Could not allocate a unique case number. Please try again.",
+        )
+    _ = time.time() - start_t
 
     invalidate_user_dashboard(str(current_user.id))
 
-    return complaint
+    return schemas.Complaint.model_validate(complaint)
 
 
 # ── POST /complaints/{id}/respond ─────────────────────────────────────────────
@@ -290,7 +318,7 @@ def respond_to_complaint(
     # Auto-update complaint status to RESPONDED
     complaint.status = "RESPONDED"
     # Update deadline for final resolution (another 7 days)
-    complaint.deadline = datetime.now() + timedelta(days=7)
+    complaint.deadline = _utc_now() + timedelta(days=7)
 
     # Log the response event
     event = models.ComplaintEvent(

@@ -48,12 +48,17 @@ def score_complaint(complaint: ComplaintCreate, user_credibility: float = 50.0) 
 
         # 1. Type Weight (from Kaggle dataset)
         type_row = _dataset[_dataset['fraud_type'] == complaint.type]
-        weight = float(type_row['weight'].values[0]) if not type_row.empty else 0.5
+        weight = 0.5
+        if not type_row.empty and 'weight' in type_row.columns:
+            weight = float(type_row['weight'].values[0])
         
         score = weight * 50  # Base score from 0-50 based on type risk
 
         # 2. Amount Scaling (normalized against average in dataset)
-        avg_amt = float(type_row['avg_amount'].values[0]) if not type_row.empty else 1000.0
+        avg_amt = 1000.0
+        if not type_row.empty and 'avg_amount' in type_row.columns:
+            avg_amt = float(type_row['avg_amount'].values[0])
+
         if complaint.amount > 0 and avg_amt > 0:
             amt_factor = min(complaint.amount / avg_amt, 2.0)
             score += amt_factor * 15  # Up to 30 points for high amount

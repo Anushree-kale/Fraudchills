@@ -63,10 +63,11 @@ def update_complaint_status(
     # Update User Credibility
     user = db.query(models.User).filter(models.User.id == complaint.user_id).first()
     if user:
+        cred = float(user.credibility_score) if user.credibility_score is not None else 50.0
         if new_status == "RESOLVED":
-            user.credibility_score = min(100.0, user.credibility_score + 5.0)
+            user.credibility_score = min(100.0, cred + 5.0)
         elif new_status == "REJECTED":
-            user.credibility_score = max(0.0, user.credibility_score - 10.0)
+            user.credibility_score = max(0.0, cred - 10.0)
 
     # Log the status change event
     event = models.ComplaintEvent(

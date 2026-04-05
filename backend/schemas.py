@@ -90,10 +90,20 @@ class ComplaintBase(BaseModel):
     platform: Optional[str] = None
     order_id: Optional[str] = None
     amount: float = 0.0
-    brand_name: str # Keep for compatibility
-    proof_urls: Optional[List[str]] = []
-    external_links: Optional[List[str]] = []
+    brand_name: str  # Keep for compatibility
+    proof_urls: List[str] = Field(default_factory=list)
+    external_links: List[str] = Field(default_factory=list)
     image_url: Optional[str] = None
+
+    @field_validator("proof_urls", "external_links", mode="before")
+    @classmethod
+    def _coerce_pg_array(cls, v):
+        # PostgreSQL ARRAY columns often come back as None; response validation was 500'ing.
+        if v is None:
+            return []
+        if isinstance(v, (list, tuple)):
+            return list(v)
+        return []
 
     class Config:
         alias_generator = to_camel
@@ -110,13 +120,33 @@ class Complaint(ComplaintBase):
     deadline: Optional[datetime] = None
     user_id: str
     brand_id: Optional[UUID] = None
-    upvotes_count: int
+    upvotes_count: int = 0
     created_at: datetime
     updated_at: datetime
 
     @field_validator("user_id", mode="before")
     @classmethod
     def user_id_as_str(cls, v):
+        return str(v) if v is not None else v
+
+    @field_validator("upvotes_count", mode="before")
+    @classmethod
+    def upvotes_not_null(cls, v):
+        return 0 if v is None else int(v)
+
+    @field_validator("score", mode="before")
+    @classmethod
+    def score_not_null(cls, v):
+        return 0.0 if v is None else float(v)
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def status_not_empty(cls, v):
+        return (v or "PENDING").strip() or "PENDING"
+
+    @field_validator("case_number", mode="before")
+    @classmethod
+    def case_num_str(cls, v):
         return str(v) if v is not None else v
 
     class Config:

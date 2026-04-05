@@ -31,15 +31,11 @@ async function proxy(req: NextRequest, pathSegments: string[]) {
   }
 
   // 1) Buffer body FIRST — before anything else touches the Request.
-  //    getServerSession (or any code that reads the request) can consume
-  //    the body stream and detach the underlying ArrayBuffer.
   let bodyBuffer: Buffer | undefined;
   if (req.method !== "GET" && req.method !== "HEAD") {
     try {
       const ab = await req.arrayBuffer();
       if (ab.byteLength > 0) {
-        // Copy into a Node Buffer immediately.  Buffer owns its own memory,
-        // so even if the original ArrayBuffer is later detached the data is safe.
         bodyBuffer = Buffer.from(ab);
       }
     } catch (err) {
@@ -47,16 +43,28 @@ async function proxy(req: NextRequest, pathSegments: string[]) {
     }
   }
 
-  // 2) Session AFTER body — with PostgresAdapter the sessions are DB-backed
-  //    opaque tokens; getToken() is always null, so we use getServerSession().
-  let email: string | undefined;
+  // 2) Resolve email for X-User-Email → FastAPI (single getServerSession call).
+  const forwardedRaw = req.headers.get("x-user-email");
+  const forwardedEmail = forwardedRaw?.trim() || undefined;
+
+  let sessionEmail: string | undefined;
   try {
     const session = await getServerSession(authOptions);
-    if (session?.user?.email) {
-      email = session.user.email;
-    }
+    sessionEmail = session?.user?.email?.trim() || undefined;
   } catch (err) {
     console.error("[BFF Auth Error] getServerSession failed:", err);
+  }
+
+  // Prefer forwarded header when set (client api.ts sends it for every authed BFF call).
+  // If it disagrees with the signed-in session, use session (spoof protection).
+  let email: string | undefined;
+  if (forwardedEmail && sessionEmail) {
+    email =
+      forwardedEmail.toLowerCase() === sessionEmail.toLowerCase()
+        ? forwardedEmail
+        : sessionEmail;
+  } else {
+    email = forwardedEmail ?? sessionEmail;
   }
 
   try {
@@ -79,26 +87,19 @@ async function proxy(req: NextRequest, pathSegments: string[]) {
       method: req.method,
       headers,
       cache: "no-store",
-      // ── FIX: redirect: "error" ────────────────────────────────────────
-      // Node's fetch follows 307 redirects automatically and tries to
-      // re-slice the body ArrayBuffer for the second request.  If FastAPI
-      // (or its app-level redirect_slashes default) issues a 307 redirect,
-      // the buffer will already be consumed/detached on the retry, causing:
-      //   TypeError: Cannot perform ArrayBuffer.prototype.slice
-      //              on a detached ArrayBuffer
-      // Setting redirect to "error" makes the fetch throw immediately on
-      // any redirect, surfacing the real URL that triggered the 307.
       redirect: "error",
-      // ── FIX: pass Buffer directly instead of Uint8Array ───────────────
-      // Buffer is a Uint8Array subclass that Node handles natively without
-      // needing an extra .slice() on the underlying ArrayBuffer.
       ...(bodyBuffer !== undefined && bodyBuffer.length > 0
         ? { body: bodyBuffer as unknown as BodyInit }
         : {}),
     };
 
     const res = await fetch(target, init);
-
+    console.log("[BFF] ←", res.status, target);
+    if (!res.ok) {
+      const body = await res.text();
+      console.log("[BFF] Error body:", body);
+      return NextResponse.json({ detail: body }, { status: res.status });
+    }
     const out = new NextResponse(res.body, { status: res.status });
     const ct = res.headers.get("content-type");
     if (ct) out.headers.set("content-type", ct);

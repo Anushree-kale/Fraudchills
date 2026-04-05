@@ -60,7 +60,8 @@ def get_user_dashboard(
     badges = []
     if resolved_count >= 10:
         badges.append("Top Reporter")
-    if current_user.credibility_score > 80:
+    cred = current_user.credibility_score
+    if cred is not None and cred > 80:
         badges.append("Trusted User")
 
     return {

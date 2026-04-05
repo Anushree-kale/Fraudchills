@@ -99,7 +99,7 @@ export default function Sidebar() {
                       <span
                         className={`flex h-5 min-w-[1.25rem] shrink-0 items-center justify-center rounded-full px-1 text-[9px] font-bold ${
                           item.badge.type === "gold"
-                            ? "bg-[var(--gold)] text-white"
+                            ? "bg-[var(--gold)] text-[var(--black)]"
                             : "bg-[var(--danger)] text-white"
                         }`}
                       >

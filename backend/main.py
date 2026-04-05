@@ -3,13 +3,14 @@ import os
 import shutil
 import uuid
 from uuid import UUID
-
+from fastapi.middleware.cors import CORSMiddleware
 
 
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, Request
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
+import traceback
 
 from auth import get_current_user
 from database import Base, engine, get_db
@@ -28,8 +29,11 @@ from routers import activity, admin, analytics, api, auth_api, brands, cases, co
 # Create tables
 Base.metadata.create_all(bind=engine)
 
-# Start background jobs
-start_scheduler()
+# Start background jobs (non-fatal if the host disallows background threads)
+try:
+    start_scheduler()
+except Exception as exc:
+    print(f"Warning: background scheduler not started: {exc}")
 
 app = FastAPI(
     title="Fraudchills API",
@@ -63,6 +67,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ── DEBUGGING: Global Exception Handler ───────────────────────────────────────
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    tb = traceback.format_exc()
+    print(f"ERROR: {exc}\n{tb}")
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": "Internal Server Error",
+            "error": str(exc),
+            "traceback": tb.split("\n")
+        }
+    )
+
 # ── File Upload ────────────────────────────────────────────────────────────────
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4", ".pdf"}
 MAX_FILE_SIZE_MB = 10
@@ -73,7 +91,8 @@ async def upload_file(
     file: UploadFile = File(...),
     current_user: models.User = Depends(get_current_user),
 ):
-    ext = os.path.splitext(file.filename)[1].lower()
+    raw_name = file.filename or "upload"
+    ext = os.path.splitext(raw_name)[1].lower()
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(status_code=400, detail=f"File type '{ext}' not allowed.")
 
@@ -110,6 +129,25 @@ app.include_router(activity.router, prefix="/activity", tags=["Activity"])
 def read_root():
     return {"message": "Fraudchills API is running", "version": "1.0.0"}
 
+@app.get("/debug/schema", tags=["Debug"])
+def debug_schema(db: Session = Depends(get_db)):
+    from sqlalchemy import inspect
+    inspector = inspect(engine)
+    tables = {}
+    for table_name in inspector.get_table_names():
+        tables[table_name] = [c['name'] for c in inspector.get_columns(table_name)]
+    
+    # Check for missing columns in complaints
+    required = ["platform", "order_id", "amount", "score", "deadline", "proof_urls", "external_links"]
+    missing = [c for c in required if c not in tables.get("complaints", [])]
+    
+    return {
+        "tables": list(tables.keys()),
+        "complaints_columns": tables.get("complaints", []),
+        "missing_complaints_columns": missing,
+        "status": "MISSING_COLUMNS" if missing else "OK"
+    }
+
 
 @app.post(
     "/predict-fraud",
@@ -139,8 +177,13 @@ def predict_fraud(
         reason=reason,
         raw_payload=json.dumps(body.model_dump()),
     )
-    db.add(log)
-    db.commit()
+    try:
+        db.add(log)
+        db.commit()
+    except Exception:
+        db.rollback()
+        # Still return score if logging fails (e.g. missing fraud_logs table)
+        pass
 
     return schemas.FraudPredictResponse(risk_score=risk, flagged=flagged, reason=reason)
 

@@ -2,7 +2,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy.orm import Session
 from database import SessionLocal
 import models
-from datetime import datetime
+from datetime import datetime, timezone
 from utils.notifications import create_notification
 
 def escalate_overdue_complaints():
@@ -12,11 +12,16 @@ def escalate_overdue_complaints():
     """
     db: Session = SessionLocal()
     try:
-        now = datetime.now()
-        overdue = db.query(models.Complaint).filter(
-            models.Complaint.status.in_(["PENDING", "INVESTIGATING"]),
-            models.Complaint.deadline < now
-        ).all()
+        now = datetime.now(timezone.utc)
+        overdue = (
+            db.query(models.Complaint)
+            .filter(
+                models.Complaint.status.in_(["PENDING", "INVESTIGATING"]),
+                models.Complaint.deadline.isnot(None),
+                models.Complaint.deadline < now,
+            )
+            .all()
+        )
 
         for complaint in overdue:
             old_status = complaint.status
