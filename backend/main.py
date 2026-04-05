@@ -52,8 +52,8 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 # Mount static files for serving uploads
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
-# CORS middleware — must be before routes (comma-separated for localhost + 127.0.0.1, etc.)
-_default_origins = "http://localhost:3000,http://127.0.0.1:3000"
+# CORS middleware — must be before routes (comma-separated). Override with CLIENT_URL in .env / host env.
+_default_origins = "https://fraud-chills.vercel.app"
 CLIENT_ORIGINS = [
     o.strip()
     for o in os.getenv("CLIENT_URL", _default_origins).split(",")
@@ -108,7 +108,7 @@ async def upload_file(
     with open(file_path, "wb") as buffer:
         buffer.write(contents)
 
-    # Generate dynamic URL based on request host (works for localhost and Render)
+    # Generate dynamic URL based on request host (e.g. Render)
     base_url = str(request.base_url).rstrip("/")
     return {"fileUrl": f"{base_url}/uploads/{unique_filename}"}
 

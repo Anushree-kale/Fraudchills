@@ -1,5 +1,6 @@
 'use server';
 
+import { getDirectBackendBaseUrl } from "@/lib/backend-url";
 import { query } from "@/lib/db";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
@@ -23,9 +24,9 @@ export async function submitComplaint(formData: FormData) {
   };
   console.log("Submitting complaint payload:", JSON.stringify(payload, null, 2));
 
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://fraudchills.onrender.com";
+  const apiBase = getDirectBackendBaseUrl();
   try {
-    const res = await fetch(`${API_URL}/complaints`, {
+    const res = await fetch(`${apiBase}/complaints`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

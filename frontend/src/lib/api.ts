@@ -1,15 +1,15 @@
 // lib/api.ts  — typed fetch layer for Fraudchills backend
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://fraudchills.onrender.com";
+import { getDirectBackendBaseUrl } from "@/lib/backend-url";
 
 /** Browser calls go through same-origin BFF to avoid CORS and to attach session safely. */
 function resolveApiBase(): string {
   if (typeof window !== "undefined") return "/api/bff";
-  return API_URL;
+  return getDirectBackendBaseUrl();
 }
 
 export function getApiUrl() {
-  return API_URL;
+  return getDirectBackendBaseUrl();
 }
 
 // ── Auth helpers ──────────────────────────────────────────────────────────────
@@ -63,7 +63,7 @@ export async function apiFetchJson<T>(
   const serverHeaders = new Headers(init?.headers ?? undefined);
   serverHeaders.set("Content-Type", "application/json");
   serverHeaders.set("X-User-Email", email);
-  const res = await fetch(`${API_URL}${path}`, {
+  const res = await fetch(`${getDirectBackendBaseUrl()}${path}`, {
     ...init,
     headers: serverHeaders,
   });
@@ -467,7 +467,7 @@ export async function uploadFile(file: File, email: string): Promise<{ fileUrl: 
   if (!email) throw new Error("Sign in required.");
   const formData = new FormData();
   formData.append("file", file);
-  const base = typeof window !== "undefined" ? "/api/bff" : API_URL;
+  const base = typeof window !== "undefined" ? "/api/bff" : getDirectBackendBaseUrl();
   // Multipart: do not set Content-Type (browser sets boundary). Always send who is uploading.
   const res = await fetch(`${base}/upload`, {
     method: "POST",

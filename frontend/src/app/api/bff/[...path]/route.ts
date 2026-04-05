@@ -1,28 +1,22 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { getDirectBackendBaseUrl } from "@/lib/backend-url";
 import { NextRequest, NextResponse } from "next/server";
 
-const BACKEND =
-  process.env.BACKEND_INTERNAL_URL?.replace(/\/+$/, "") ??
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") ??
-  "https://fraudchills.onrender.com";
-
-console.log("[BFF] BACKEND =", BACKEND);
-
-const HOP_BY_HOP = new Set([
-  "connection",
-  "content-length",
-  "host",
-  "keep-alive",
-  "proxy-authenticate",
-  "proxy-authorization",
-  "te",
-  "trailer",
-  "transfer-encoding",
-  "upgrade",
-]);
-
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
+/** Build outbound headers — do not forward the browser request wholesale (invalid / hop-by-hop headers break Node fetch on Vercel). */
+function buildUpstreamHeaders(req: NextRequest, email: string | undefined): Headers {
+  const h = new Headers();
+  const accept = req.headers.get("accept");
+  if (accept) h.set("Accept", accept);
+  else h.set("Accept", "application/json");
+  const authz = req.headers.get("authorization");
+  if (authz) h.set("Authorization", authz);
+  if (email) h.set("X-User-Email", email);
+  return h;
+}
 
 async function proxy(req: NextRequest, pathSegments: string[]) {
   const subpath = pathSegments.join("/");
@@ -68,39 +62,47 @@ async function proxy(req: NextRequest, pathSegments: string[]) {
   }
 
   try {
+    const backend = getDirectBackendBaseUrl();
     const incoming = new URL(req.url);
-    const target = `${BACKEND}/${subpath}${incoming.search}`;
+    const target = `${backend}/${subpath}${incoming.search}`;
 
-    console.log("[BFF] →", req.method, target);
+    if (process.env.NODE_ENV === "development") {
+      console.log("[BFF] →", req.method, target);
+    }
 
-    const headers = new Headers();
-    req.headers.forEach((value, key) => {
-      if (HOP_BY_HOP.has(key.toLowerCase())) return;
-      headers.set(key, value);
-    });
-
-    if (email) {
-      headers.set("X-User-Email", email);
+    const headers = buildUpstreamHeaders(req, email);
+    if (bodyBuffer !== undefined && bodyBuffer.length > 0) {
+      const ct = req.headers.get("content-type");
+      if (ct) headers.set("Content-Type", ct);
+      else headers.set("Content-Type", "application/json");
     }
 
     const init: RequestInit = {
       method: req.method,
       headers,
       cache: "no-store",
-      redirect: "error",
+      redirect: "follow",
       ...(bodyBuffer !== undefined && bodyBuffer.length > 0
         ? { body: bodyBuffer as unknown as BodyInit }
         : {}),
     };
 
     const res = await fetch(target, init);
-    console.log("[BFF] ←", res.status, target);
+    if (process.env.NODE_ENV === "development") {
+      console.log("[BFF] ←", res.status, target);
+    }
     if (!res.ok) {
       const body = await res.text();
-      console.log("[BFF] Error body:", body);
+      if (process.env.NODE_ENV === "development") {
+        console.log("[BFF] Error body:", body);
+      }
       return NextResponse.json({ detail: body }, { status: res.status });
     }
-    const out = new NextResponse(res.body, { status: res.status });
+
+    // Buffer upstream body — passing res.body (ReadableStream) into NextResponse often throws on Vercel
+    // even when Render returned 200, which surfaces as "Proxy error" with no useful Render logs.
+    const payload = await res.arrayBuffer();
+    const out = new NextResponse(payload, { status: res.status });
     const ct = res.headers.get("content-type");
     if (ct) out.headers.set("content-type", ct);
 
@@ -121,7 +123,7 @@ async function proxy(req: NextRequest, pathSegments: string[]) {
     );
     return NextResponse.json(
       {
-        detail: "Internal Proxy Error",
+        detail: `Proxy error (${subpath}): ${e.message}${cause ? ` — ${cause}` : ""}`,
         message: e.message,
         ...(cause ? { cause } : {}),
         path: subpath,
