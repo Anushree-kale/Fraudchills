@@ -1,0 +1,12 @@
+{
+  "name": "fraudchills",
+  "private": true,
+  "scripts": {
+    "build": "cd frontend && npm ci && npm run build",
+    "dev": "cd frontend && npm run dev",
+    "lint": "cd frontend && npm run lint"
+  },
+  "dependencies": {
+    "next": "16.2.2"
+  }
+}
