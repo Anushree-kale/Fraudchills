@@ -31,10 +31,12 @@ def load_ml_resources():
 load_ml_resources()
 
 def get_ml_health():
+    """Standardized health check for Kaggle-based scorer."""
     return {
-        "modelLoaded": _model_status["model_loaded"],
-        "datasetRows": _model_status["dataset_rows"],
-        "featureColumns": _model_status["feature_columns"],
+        "loaded": _model_status["model_loaded"],
+        "status": "OK" if _model_status["model_loaded"] else "MISSING",
+        "rows": _model_status["dataset_rows"],
+        "columns": _model_status["feature_columns"],
     }
 
 def score_complaint(complaint: ComplaintCreate, user_credibility: float = 50.0) -> float:

@@ -16,13 +16,17 @@ import numpy as np
 from schemas import FraudPredictRequest
 
 _MODEL = None
+_MODEL_TRIED = False
 
 
 def _load_xgb():
-    global _MODEL
-    if _MODEL is not None:
+    global _MODEL, _MODEL_TRIED
+    if _MODEL_TRIED:
         return _MODEL
+
     path = os.path.join(os.path.dirname(__file__), "fraud_xgb.pkl")
+    _MODEL_TRIED = True
+
     if not os.path.exists(path):
         return None
     try:
@@ -33,6 +37,16 @@ def _load_xgb():
         return _MODEL
     except Exception:
         return None
+
+
+def get_ml_status():
+    """Check if the XGBoost model is available."""
+    model = _load_xgb()
+    return {
+        "loaded": model is not None,
+        "status": "OK" if model is not None else "MISSING",
+        "path": os.path.join(os.path.dirname(__file__), "fraud_xgb.pkl")
+    }
 
 
 def _ip_mismatch_heuristic(ip: str, fingerprint: str) -> Tuple[float, List[str]]:

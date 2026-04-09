@@ -53,7 +53,7 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 # CORS middleware — must be before routes (comma-separated). Override with CLIENT_URL in .env / host env.
-_default_origins = "https://fraud-chills.vercel.app"
+_default_origins = "https://fraudchills.vercel.app"
 CLIENT_ORIGINS = [
     o.strip()
     for o in os.getenv("CLIENT_URL", _default_origins).split(",")
@@ -127,7 +127,25 @@ app.include_router(activity.router, prefix="/activity", tags=["Activity"])
 # ── Health ─────────────────────────────────────────────────────────────────────
 @app.get("/", tags=["Health"])
 def read_root():
-    return {"message": "Fraudchills API is running", "version": "1.0.0"}
+    from ml.predict_fraud import get_ml_status
+    from ml.scorer import get_ml_health
+    ml_status = get_ml_status()["loaded"] and get_ml_health()["loaded"]
+    return {
+        "message": "Fraudchills API is running",
+        "version": "1.0.0",
+        "ml_engine": "ACTIVE" if ml_status else "DEGRADED"
+    }
+
+
+@app.get("/health/ml", tags=["Health"])
+def get_ml_health_combined():
+    """Aggregated health status of all ML components."""
+    from ml.predict_fraud import get_ml_status
+    from ml.scorer import get_ml_health
+    return {
+        "xgboost_model": get_ml_status(),
+        "kaggle_dataset": get_ml_health()
+    }
 
 @app.get("/debug/schema", tags=["Debug"])
 def debug_schema(db: Session = Depends(get_db)):
