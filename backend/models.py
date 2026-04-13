@@ -1,4 +1,5 @@
-from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, Float, ARRAY, Text, UniqueConstraint, Boolean
+from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, Float, Text, UniqueConstraint, Boolean
+from utils.db_types import CompatibleARRAY
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from database import Base
@@ -17,7 +18,7 @@ class User(Base):
     image = Column(String)
     password = Column(String)
     role = Column(String, default="CUSTOMER")
-    brand_id = Column(UUID(as_uuid=True), ForeignKey("brands.id"), nullable=True)
+    brand_id = Column(UUID(as_uuid=True), ForeignKey("brands.id", use_alter=True, name="fk_user_brand"), nullable=True)
     credibility_score = Column(Float, default=50.0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
@@ -53,8 +54,8 @@ class Complaint(Base):
     brand_id = Column(UUID(as_uuid=True), ForeignKey("brands.id"), nullable=True)
     score = Column(Float, default=0.0)
     deadline = Column(DateTime(timezone=True))
-    proof_urls = Column(ARRAY(String))
-    external_links = Column(ARRAY(String))
+    proof_urls = Column(CompatibleARRAY(String))
+    external_links = Column(CompatibleARRAY(String))
     image_url = Column(String)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     upvotes_count = Column(Integer, default=0)

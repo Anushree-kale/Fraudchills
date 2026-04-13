@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, ConfigDict
 from typing import List, Optional
 from datetime import datetime
 from uuid import UUID
@@ -14,9 +14,10 @@ class UserBase(BaseModel):
     role: str = "CUSTOMER"
     credibility_score: float = 50.0
 
-    class Config:
-        alias_generator = to_camel
-        populate_by_name = True
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+    )
 
 class UserCreate(UserBase):
     pass
@@ -31,28 +32,31 @@ class User(UserBase):
     def id_as_str(cls, v):
         return str(v) if v is not None else v
 
-    class Config:
-        from_attributes = True
-        alias_generator = to_camel
-        populate_by_name = True
+    model_config = ConfigDict(
+        from_attributes=True,
+        alias_generator=to_camel,
+        populate_by_name=True,
+    )
 
 
 class UserProfileUpdate(BaseModel):
     name: Optional[str] = None
     image: Optional[str] = None
 
-    class Config:
-        alias_generator = to_camel
-        populate_by_name = True
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+    )
 
 
 class PasswordUpdate(BaseModel):
     current_password: Optional[str] = None
     new_password: str = Field(..., min_length=8, max_length=256)
 
-    class Config:
-        alias_generator = to_camel
-        populate_by_name = True
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+    )
 
 
 # Brand Schemas
@@ -62,9 +66,10 @@ class BrandBase(BaseModel):
     website: Optional[str] = None
     gst_number: Optional[str] = None
 
-    class Config:
-        alias_generator = to_camel
-        populate_by_name = True
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+    )
 
 class BrandCreate(BrandBase):
     verification_doc_url: Optional[str] = None
@@ -78,10 +83,11 @@ class Brand(BrandBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
-        alias_generator = to_camel
-        populate_by_name = True
+    model_config = ConfigDict(
+        from_attributes=True,
+        alias_generator=to_camel,
+        populate_by_name=True,
+    )
 
 # Complaint Schemas
 class ComplaintBase(BaseModel):
@@ -105,9 +111,10 @@ class ComplaintBase(BaseModel):
             return list(v)
         return []
 
-    class Config:
-        alias_generator = to_camel
-        populate_by_name = True
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+    )
 
 class ComplaintCreate(ComplaintBase):
     pass
@@ -149,10 +156,11 @@ class Complaint(ComplaintBase):
     def case_num_str(cls, v):
         return str(v) if v is not None else v
 
-    class Config:
-        from_attributes = True
-        alias_generator = to_camel
-        populate_by_name = True
+    model_config = ConfigDict(
+        from_attributes=True,
+        alias_generator=to_camel,
+        populate_by_name=True,
+    )
 
 # Complaint Event Schemas
 class ComplaintEvent(BaseModel):
@@ -162,10 +170,11 @@ class ComplaintEvent(BaseModel):
     note: Optional[str] = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
-        alias_generator = to_camel
-        populate_by_name = True
+    model_config = ConfigDict(
+        from_attributes=True,
+        alias_generator=to_camel,
+        populate_by_name=True,
+    )
 
 class ComplaintSLA(BaseModel):
     complaint_id: UUID
@@ -178,9 +187,10 @@ class ComplaintSLA(BaseModel):
     breached: bool
     progress_pct: float
 
-    class Config:
-        alias_generator = to_camel
-        populate_by_name = True
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+    )
 
 # Response Schemas
 class ResponseBase(BaseModel):
@@ -195,8 +205,7 @@ class Response(ResponseBase):
     user_id: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # Notification Schemas
 class Notification(BaseModel):
@@ -207,10 +216,11 @@ class Notification(BaseModel):
     is_read: bool = False
     created_at: datetime
 
-    class Config:
-        from_attributes = True
-        alias_generator = to_camel
-        populate_by_name = True
+    model_config = ConfigDict(
+        from_attributes=True,
+        alias_generator=to_camel,
+        populate_by_name=True,
+    )
 
 # Known Fraudulent Brand Schemas
 class KnownFraudulentBrand(BaseModel):
@@ -220,10 +230,11 @@ class KnownFraudulentBrand(BaseModel):
     source: Optional[str] = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
-        alias_generator = to_camel
-        populate_by_name = True
+    model_config = ConfigDict(
+        from_attributes=True,
+        alias_generator=to_camel,
+        populate_by_name=True,
+    )
 
 # API Key Schemas
 class APIKeyCreate(BaseModel):
@@ -237,10 +248,11 @@ class APIKey(BaseModel):
     is_active: bool
     created_at: datetime
 
-    class Config:
-        from_attributes = True
-        alias_generator = to_camel
-        populate_by_name = True
+    model_config = ConfigDict(
+        from_attributes=True,
+        alias_generator=to_camel,
+        populate_by_name=True,
+    )
 
 # API Prediction Schemas
 class PredictionRequest(BaseModel):
@@ -250,18 +262,20 @@ class PredictionRequest(BaseModel):
     card_last4: str
     num_orders_last_24h: int
 
-    class Config:
-        alias_generator = to_camel
-        populate_by_name = True
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+    )
 
 class PredictionResponse(BaseModel):
     risk_score: float
     risk_label: str
     recommendation: str # ALLOW, REVIEW, BLOCK
 
-    class Config:
-        alias_generator = to_camel
-        populate_by_name = True
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+    )
 
 # Analytics Schemas
 class BrandSummary(BaseModel):
@@ -270,9 +284,10 @@ class BrandSummary(BaseModel):
     avg_risk_score: float
     risk_label: str
 
-    class Config:
-        alias_generator = to_camel
-        populate_by_name = True
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+    )
 
 class BrandProfile(BaseModel):
     brand_name: str
@@ -287,17 +302,19 @@ class BrandProfile(BaseModel):
     resolution_score: float = 0.0
     unverified_warning: bool = True
 
-    class Config:
-        alias_generator = to_camel
-        populate_by_name = True
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+    )
 
 # Admin Schemas
 class StatusUpdate(BaseModel):
     status: str
 
-    class Config:
-        alias_generator = to_camel
-        populate_by_name = True
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+    )
 
 class AdminStats(BaseModel):
     total_complaints: int
@@ -306,9 +323,10 @@ class AdminStats(BaseModel):
     by_status: dict[str, int]
     by_type: dict[str, int]
 
-    class Config:
-        alias_generator = to_camel
-        populate_by_name = True
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+    )
 
 class AnalyticsSummary(BaseModel):
     total_complaints: int
@@ -319,18 +337,20 @@ class AnalyticsSummary(BaseModel):
     complaints_by_type: dict[str, int]
     complaints_by_status: dict[str, int]
 
-    class Config:
-        alias_generator = to_camel
-        populate_by_name = True
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+    )
 
 class TrendData(BaseModel):
     period_label: str
     count: int
     avg_score: float
 
-    class Config:
-        alias_generator = to_camel
-        populate_by_name = True
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+    )
 
 class TopBrand(BaseModel):
     brand_name: str
@@ -338,9 +358,10 @@ class TopBrand(BaseModel):
     avg_score: float
     resolved_count: int
 
-    class Config:
-        alias_generator = to_camel
-        populate_by_name = True
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+    )
 
 
 # ── Dashboard JSON API (snake_case, no camelCase aliases) ─────────────────────
@@ -376,9 +397,10 @@ class ActiveCaseOut(BaseModel):
     amount: float
     status: str
 
-    class Config:
-        alias_generator = to_camel
-        populate_by_name = True
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+    )
 
 
 class ActiveCasesPage(BaseModel):
