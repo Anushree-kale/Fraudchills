@@ -1,7 +1,15 @@
+import os
+import sys
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+
+# ── Import Path Helper ────────────────────────────────────────────────────────
+# Add the 'backend' directory to the path so tests can find main.py and database.py 
+# even if you run pytest from the root folder.
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from database import Base, get_db
 from main import app
 

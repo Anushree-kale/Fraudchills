@@ -1,7 +1,6 @@
 import os
 from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker
 from dotenv import load_dotenv
 
 # Try loading from current dir, then from parent (root .env)
@@ -13,14 +12,22 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL environment variable is not set.")
 
-# Render (and most managed Postgres providers) require SSL.
-# Default to "require" but allow override via DB_SSL_MODE (e.g. set to "prefer" or "disable" locally).
-_ssl_mode = os.getenv("DB_SSL_MODE", "require")
-_connect_args = {"sslmode": _ssl_mode}
+# ── Database Connection Configuration ──────────────────────────────────────────
+# Different drivers expect different arguments. 
+# 'sslmode' is specific to PostgreSQL (psycopg2). 
+# Adding it to SQLite or other drivers will cause a TypeError.
+connect_args = {}
 
-engine = create_engine(DATABASE_URL, connect_args=_connect_args)
+if DATABASE_URL.startswith("postgresql"):
+    # Render (and most managed Postgres providers) require SSL.
+    # Default to "require" but allow override via DB_SSL_MODE.
+    _ssl_mode = os.getenv("DB_SSL_MODE", "require")
+    connect_args["sslmode"] = _ssl_mode
+
+engine = create_engine(DATABASE_URL, connect_args=connect_args)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+# Modern SQLAlchemy 2.0 style Base
 Base = declarative_base()
 
 
