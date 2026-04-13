@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: fraudchills-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-fraudchills}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./frontend/src/lib/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: fraudchills-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-fraudchills}
+      - JWT_SECRET=${JWT_SECRET}
+      - CLIENT_URL=${CLIENT_URL:-http://localhost:3000}
+      - DB_SSL_MODE=${DB_SSL_MODE:-disable}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-fraudchills}
+    container_name: fraudchills-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - BACKEND_URL=http://backend:8000
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3000}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-fraudchills}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+    depends_on:
+      - backend
+
+  ml-service:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: fraudchills-ml
+    command: [ "python", "-c", "import time; print('ML Inference Service Running...'); time.sleep(864000)" ]
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-fraudchills}
+      - DB_SSL_MODE=${DB_SSL_MODE:-disable}
+    depends_on:
+      db:
+        condition: service_healthy
+      backend:
+        condition: service_started
+
+volumes:
+  pgdata:

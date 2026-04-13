@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS users (
   password text,
   role text DEFAULT 'CUSTOMER',
   credibility_score float8 DEFAULT 50.0,
+  brand_id uuid,
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );
@@ -131,3 +132,6 @@ CREATE TABLE IF NOT EXISTS api_keys (
   is_active boolean DEFAULT true,
   created_at timestamptz DEFAULT now()
 );
+
+-- Circular reference: users and brands
+ALTER TABLE users ADD CONSTRAINT users_brand_id_fkey FOREIGN KEY (brand_id) REFERENCES brands(id);
