@@ -12,20 +12,28 @@ _model_status = {
     "feature_columns": []
 }
 
+import json
+
 def load_ml_resources():
     global _dataset, _model_status
     try:
-        csv_path = os.path.join(os.path.dirname(__file__), "fraud_data_kaggle.csv")
-        if os.path.exists(csv_path):
-            _dataset = pd.read_csv(csv_path)
+        # Load pre-calculated stats for optimization
+        stats_path = os.path.join(os.path.dirname(__file__), "baseline_stats.json")
+        if os.path.exists(stats_path):
+            with open(stats_path, "r") as f:
+                stats = json.load(f)
+            
             _model_status["model_loaded"] = True
-            _model_status["dataset_rows"] = len(_dataset)
-            _model_status["feature_columns"] = _dataset.columns.tolist()
-            print(f"ML: Loaded Kaggle dataset from {csv_path}")
+            _model_status["dataset_rows"] = stats.get("total_rows", 0)
+            _model_status["feature_columns"] = stats.get("feature_columns", [])
+            _model_status["avg_amount"] = stats.get("avg_amount", 226.77)
+            _model_status["fraud_rate"] = stats.get("fraud_rate", 0.05)
+            
+            print(f"ML: Loaded optimized baseline stats from {stats_path}")
         else:
-            print(f"ML: Dataset NOT found at {csv_path}")
+            print(f"ML: Optimized stats NOT found at {stats_path}. Run generate_baseline_stats.py first.")
     except Exception as e:
-        print(f"ML: Error loading resources: {e}")
+        print(f"ML: Error loading optimized resources: {e}")
 
 # Initial load
 load_ml_resources()
@@ -48,22 +56,21 @@ def score_complaint(complaint: ComplaintCreate, user_credibility: float = 50.0) 
         if not _model_status["model_loaded"]:
             return _rule_based_fallback(complaint)
 
-        # 1. Type Weight (from Kaggle dataset)
-        type_row = _dataset[_dataset['fraud_type'] == complaint.type]
-        weight = 0.5
-        if not type_row.empty and 'weight' in type_row.columns:
-            weight = float(type_row['weight'].values[0])
+        # 1. Type Weight (Fallback to rule-based since raw data doesn't have fraud_type weights)
+        # We can use the global fraud rate from the dataset as a baseline
+        base_weight = _model_status.get("fraud_rate", 0.1)
+        score = base_weight * 100  # Base score from 0-100 based on global risk
         
-        score = weight * 50  # Base score from 0-50 based on type risk
+        # Adjust based on type if known
+        if complaint.type in ["SELLER_FRAUD", "PHISHING", "IDENTITY_THEFT"]:
+            score += 20.0
 
         # 2. Amount Scaling (normalized against average in dataset)
-        avg_amt = 1000.0
-        if not type_row.empty and 'avg_amount' in type_row.columns:
-            avg_amt = float(type_row['avg_amount'].values[0])
+        avg_amt = _model_status.get("avg_amount", 1000.0)
 
         if complaint.amount > 0 and avg_amt > 0:
-            amt_factor = min(complaint.amount / avg_amt, 2.0)
-            score += amt_factor * 15  # Up to 30 points for high amount
+            amt_factor = min(complaint.amount / avg_amt, 2.5)
+            score += amt_factor * 15  # Up to 37.5 points for high amount
 
         # 3. Text analysis (keywords)
         text = (complaint.details or "").lower()

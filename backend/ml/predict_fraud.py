@@ -12,11 +12,39 @@ import re
 from typing import List, Tuple
 
 import numpy as np
+import requests
 
 from schemas import FraudPredictRequest
 
+MODEL_URL = os.getenv("HF_MODEL_URL", "https://huggingface.co/Anushree-028/Fraudchills/resolve/main/fraud_xgb.pkl")
 _MODEL = None
 _MODEL_TRIED = False
+_HF_TOKEN = os.getenv("HF_TOKEN")
+
+
+def _download_model(path: str):
+    """Download the model from Hugging Face if it doesn't exist."""
+    if os.path.exists(path):
+        return
+
+    print(f"ML: Downloading model from {MODEL_URL}...")
+    try:
+        headers = {}
+        if _HF_TOKEN:
+            headers["Authorization"] = f"Bearer {_HF_TOKEN}"
+        
+        response = requests.get(MODEL_URL, stream=True, timeout=30, headers=headers)
+        response.raise_for_status()
+        
+        # Ensure the directory exists
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        
+        with open(path, "wb") as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+        print(f"ML: Model downloaded successfully to {path}")
+    except Exception as e:
+        print(f"ML: Failed to download model: {e}")
 
 
 def _load_xgb():
@@ -26,6 +54,9 @@ def _load_xgb():
 
     path = os.path.join(os.path.dirname(__file__), "fraud_xgb.pkl")
     _MODEL_TRIED = True
+
+    # Attempt download if missing
+    _download_model(path)
 
     if not os.path.exists(path):
         return None

@@ -1,0 +1,24 @@
+{
+    "avg_amount": 226.76830923886183,
+    "fraud_rate": 0.05012926422585393,
+    "total_rows": 1472952,
+    "feature_columns": [
+        "Transaction ID",
+        "Customer ID",
+        "Transaction Amount",
+        "Transaction Date",
+        "Payment Method",
+        "Product Category",
+        "Quantity",
+        "Customer Age",
+        "Customer Location",
+        "Device Used",
+        "IP Address",
+        "Shipping Address",
+        "Billing Address",
+        "Is Fraudulent",
+        "Account Age Days",
+        "Transaction Hour"
+    ],
+    "last_updated": "2026-04-14T15:08:39.151100"
+}

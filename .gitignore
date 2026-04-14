@@ -39,3 +39,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# models and datasets
+*.pkl
+*.csv
+backend/ml/fraud_xgb.pkl
+backend/ml/merged_training_data.csv
+backend/ml/fraud_data_kaggle.csv

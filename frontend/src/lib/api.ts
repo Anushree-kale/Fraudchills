@@ -212,6 +212,15 @@ export interface DashboardSummary {
   riskScore: number;
 }
 
+export interface Notification {
+  id: string;
+  userId: string;
+  type: string;
+  message: string;
+  isRead: boolean;
+  createdAt: string;
+}
+
 // ── Normalizers (snake_case ↔ camelCase safety) ───────────────────────────────
 
 export function normalizeAnalyticsSummary(raw: Record<string, unknown>): AnalyticsSummary {
@@ -476,4 +485,23 @@ export async function uploadFile(file: File, email: string): Promise<{ fileUrl: 
     body: formData,
   });
   return handleResponse<{ fileUrl: string }>(res);
+}
+
+// ── Notifications API ─────────────────────────────────────────────────────────
+
+export async function fetchNotifications(email: string, skip = 0, limit = 20): Promise<Notification[]> {
+  const raw = await apiFetchJson<unknown[]>(`/users/me/notifications?skip=${skip}&limit=${limit}`, email);
+  if (!Array.isArray(raw)) return [];
+  return raw.map((r: any) => ({
+    id: String(r.id),
+    userId: String(r.user_id || r.userId),
+    type: String(r.type || r.notification_type || "SYSTEM"),
+    message: String(r.message || ""),
+    isRead: Boolean(r.is_read || r.isRead),
+    createdAt: String(r.created_at || r.createdAt),
+  }));
+}
+
+export async function markNotificationRead(id: string, email: string): Promise<{ success: boolean }> {
+  return apiFetchJson<{ success: boolean }>(`/users/me/notifications/${id}/read`, email, { method: "POST" });
 }
