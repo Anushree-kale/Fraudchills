@@ -2,14 +2,16 @@ import json
 import os
 import shutil
 import uuid
+import time
 from uuid import UUID
 from fastapi.middleware.cors import CORSMiddleware
 
 
-from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, Request
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, Request, BackgroundTasks
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 import traceback
 
 from auth import get_current_user
@@ -28,6 +30,8 @@ from routers import activity, admin, analytics, api, auth_api, brands, cases, co
 
 # Create tables
 Base.metadata.create_all(bind=engine)
+
+START_TIME = time.time()
 
 # Start background jobs (non-fatal if the host disallows background threads)
 try:
@@ -147,6 +151,25 @@ def get_ml_health_combined():
         "kaggle_dataset": get_ml_health()
     }
 
+@app.get("/health", tags=["Health"])
+def health_check(db: Session = Depends(get_db)):
+    """System health check endpoint for monitoring."""
+    uptime_seconds = time.time() - START_TIME
+    
+    db_status = "OK"
+    try:
+        db.execute(text("SELECT 1"))
+    except Exception as e:
+        db_status = f"ERROR: {str(e)}"
+        
+    from ml.predict_fraud import get_ml_status
+    return {
+        "status": "OK" if db_status == "OK" else "DEGRADED",
+        "uptime_seconds": round(uptime_seconds, 2),
+        "database": db_status,
+        "ml_model": get_ml_status()["status"]
+    }
+
 @app.get("/debug/schema", tags=["Debug"])
 def debug_schema(db: Session = Depends(get_db)):
     from sqlalchemy import inspect
@@ -174,11 +197,13 @@ def debug_schema(db: Session = Depends(get_db)):
 )
 def predict_fraud(
     body: schemas.FraudPredictRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
     """Real-time fraud score (0–1) with audit row in fraud_logs."""
     from ml.predict_fraud import score_request
+    from utils.alerts import send_fraud_alert
 
     risk, flagged, reason = score_request(body)
     complaint_uuid = None
@@ -202,6 +227,15 @@ def predict_fraud(
         db.rollback()
         # Still return score if logging fails (e.g. missing fraud_logs table)
         pass
+
+    if flagged:
+        background_tasks.add_task(
+            send_fraud_alert,
+            str(complaint_uuid) if complaint_uuid else "N/A",
+            risk,
+            reason,
+            json.dumps(body.model_dump())
+        )
 
     return schemas.FraudPredictResponse(risk_score=risk, flagged=flagged, reason=reason)
 
