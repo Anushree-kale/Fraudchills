@@ -67,7 +67,6 @@ export const authOptions: NextAuthOptions = {
   ],
   pages: {
     signIn: "/auth/signin",
-    newUser: "/auth/signup",
   },
   // Enable debug in production temporarily to troubleshoot the redirect mismatch.
   // Check your Vercel logs to see the exact URL being sent to Google.
