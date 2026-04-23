@@ -9,25 +9,12 @@ import type { Pool } from "pg";
 import pool from "@/lib/db";
 
 /**
- * @auth/pg-adapter createUser() does not send `id`. Production DBs without
- * DEFAULT gen_random_uuid() on users.id raise NOT NULL — fix DB with
- * backend/migrations/005_users_id_default_uuid.sql; this supplies id in app as well.
+ * Custom adapter wrapper. 
+ * Since init.sql has DEFAULT gen_random_uuid(), we don't need to manually 
+ * supply IDs. The base PostgresAdapter handles the mapping.
  */
 function fraudchillsPostgresAdapter(client: Pool): Adapter {
-  const base = PostgresAdapter(client);
-  return {
-    ...base,
-    async createUser(user: Omit<AdapterUser, "id">) {
-      const id = randomUUID();
-      const { name, email, emailVerified, image } = user;
-      const sql = `
-        INSERT INTO users (id, name, email, "emailVerified", image)
-        VALUES ($1, $2, $3, $4, $5)
-        RETURNING id, name, email, "emailVerified", image`;
-      const result = await client.query(sql, [id, name, email, emailVerified, image]);
-      return result.rows[0];
-    },
-  };
+  return PostgresAdapter(client) as Adapter;
 }
 
 /**
@@ -36,6 +23,7 @@ function fraudchillsPostgresAdapter(client: Pool): Adapter {
  */
 export const authOptions: NextAuthOptions = {
   adapter: fraudchillsPostgresAdapter(pool),
+  secret: process.env.NEXTAUTH_SECRET,
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -84,15 +72,28 @@ export const authOptions: NextAuthOptions = {
   // Enable debug in production temporarily to troubleshoot the redirect mismatch.
   // Check your Vercel logs to see the exact URL being sent to Google.
   debug: true,
+  cookies: {
+    sessionToken: {
+      name: process.env.NODE_ENV === "production" ? `__Secure-next-auth.session-token` : `next-auth.session-token`,
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: process.env.NODE_ENV === "production",
+      },
+    },
+  },
   callbacks: {
-    // Force all redirects to use the production domain, ignoring any temporary Vercel URLs.
     async redirect({ url, baseUrl }) {
-      const productionUrl = process.env.NEXTAUTH_URL || baseUrl;
-      // If the redirect URL is relative, use the production base.
-      if (url.startsWith("/")) return `${productionUrl.replace(/\/$/, "")}${url}`;
-      // Allow redirects to the same origin.
-      if (new URL(url).origin === new URL(productionUrl).origin) return url;
-      return productionUrl;
+      // Allows relative callback URLs
+      if (url.startsWith("/")) return `${baseUrl}${url}`;
+      // Allows callback URLs on the same origin
+      try {
+        if (new URL(url).origin === new URL(baseUrl).origin) return url;
+      } catch {
+        // ignore
+      }
+      return baseUrl;
     },
     async session({ session, user }: { session: any; user: any }) {
       if (session?.user && user) {
@@ -102,6 +103,4 @@ export const authOptions: NextAuthOptions = {
       return session;
     },
   },
-  // Redundantly provide secret for Edge Runtime stability
-  secret: process.env.NEXTAUTH_SECRET,
 };
