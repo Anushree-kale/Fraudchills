@@ -28,6 +28,8 @@ def check_duplicate_complaint(db: Session, user_id, brand_name: str, new_details
             models.Complaint.brand_name.ilike(brand_name),
             models.Complaint.created_at >= thirty_days_ago,
         )
+        .order_by(models.Complaint.created_at.desc())
+        .limit(40)
         .all()
     )
 

@@ -6,6 +6,8 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: path.resolve(__dirname),
   },
+  // Native driver + NextAuth adapter: bundling pg for serverless can break OAuth DB callbacks on Vercel.
+  serverExternalPackages: ["pg", "@auth/pg-adapter"],
 };
 
 export default nextConfig;

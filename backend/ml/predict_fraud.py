@@ -22,9 +22,26 @@ _MODEL_TRIED = False
 _HF_TOKEN = os.getenv("HF_TOKEN")
 
 
+def _allow_hf_download() -> bool:
+    """
+    Hugging Face download on first /predict-fraud hit can take 10–30s+ and blocks users.
+    On Render (RENDER=true) it is off unless ML_AUTO_DOWNLOAD=true. Locally it stays on
+    unless ML_AUTO_DOWNLOAD=false.
+    """
+    v = os.getenv("ML_AUTO_DOWNLOAD", "").strip().lower()
+    if v in ("1", "true", "yes"):
+        return True
+    if v in ("0", "false", "no"):
+        return False
+    return os.getenv("RENDER") != "true"
+
+
 def _download_model(path: str):
     """Download the model from Hugging Face if it doesn't exist."""
     if os.path.exists(path):
+        return
+    if not _allow_hf_download():
+        print("ML: Skipping Hugging Face download (set ML_AUTO_DOWNLOAD=true or bundle ml/fraud_xgb.pkl in the image).")
         return
 
     print(f"ML: Downloading model from {MODEL_URL}...")

@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 /** Build outbound headers — do not forward the browser request wholesale (invalid / hop-by-hop headers break Node fetch on Vercel). */
 function buildUpstreamHeaders(req: NextRequest, email: string | undefined): Headers {

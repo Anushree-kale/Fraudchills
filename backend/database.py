@@ -1,7 +1,9 @@
 import os
+import re
+
+from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
-from dotenv import load_dotenv
 
 # Try loading from current dir, then from parent (root .env)
 load_dotenv()
@@ -11,6 +13,31 @@ if not os.getenv("DATABASE_URL"):
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL environment variable is not set.")
+
+
+def _postgres_url_host(url: str) -> str:
+    m = re.search(r"://(?:[^@/]*@)?([^/:?]+)", url)
+    return m.group(1) if m else ""
+
+
+def _reject_render_internal_db_url(url: str) -> None:
+    """Render internal hostnames (e.g. dpg-xxx-a) do not resolve outside Render's network."""
+    if not url.startswith("postgresql"):
+        return
+    host = _postgres_url_host(url)
+    if host.startswith("dpg-") and "." not in host:
+        raise RuntimeError(
+            "DATABASE_URL points at Render's internal Postgres hostname "
+            f"({host!r}), which does not resolve on your machine or on Vercel. "
+            "In the Render dashboard, open your Postgres → Connect → copy the "
+            "**External** Database URL (host ends with .render.com, often "
+            "region-postgres.render.com) and set DATABASE_URL to that in "
+            "backend/.env, frontend/.env.local, and Vercel env vars. "
+            "Use the internal URL only for services running on Render in the same region."
+        )
+
+
+_reject_render_internal_db_url(DATABASE_URL)
 
 # ── Database Connection Configuration ──────────────────────────────────────────
 # Different drivers expect different arguments. 

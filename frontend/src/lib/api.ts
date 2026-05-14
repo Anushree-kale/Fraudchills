@@ -460,14 +460,42 @@ export async function fetchActiveCases(
 
 // ── Dashboard API ─────────────────────────────────────────────────────────────
 
+/** Sidebar + dashboard both request summary on mount; dedupe + TTL cuts BFF/session work in half. */
+const _dashboardSummaryInflight = new Map<string, Promise<DashboardSummary>>();
+const _dashboardSummaryCache = new Map<string, { expires: number; value: DashboardSummary }>();
+const DASHBOARD_SUMMARY_TTL_MS = 12_000;
+
 export async function fetchDashboardSummary(email: string): Promise<DashboardSummary> {
-  const raw = await apiFetchJson<Record<string, unknown>>("/dashboard/summary", email);
-  return {
-    activeCases: Number(raw.activeCases ?? raw.active_cases ?? 0),
-    resolvedCases: Number(raw.resolvedCases ?? raw.resolved_cases ?? 0),
-    amountAtRisk: Number(raw.amountAtRisk ?? raw.amount_at_risk ?? 0),
-    riskScore: Number(raw.riskScore ?? raw.risk_score ?? 0),
-  };
+  const now = Date.now();
+  const cached = _dashboardSummaryCache.get(email);
+  if (cached && cached.expires > now) {
+    return cached.value;
+  }
+
+  const inflight = _dashboardSummaryInflight.get(email);
+  if (inflight) return inflight;
+
+  const p = (async () => {
+    try {
+      const raw = await apiFetchJson<Record<string, unknown>>("/dashboard/summary", email);
+      const value: DashboardSummary = {
+        activeCases: Number(raw.activeCases ?? raw.active_cases ?? 0),
+        resolvedCases: Number(raw.resolvedCases ?? raw.resolved_cases ?? 0),
+        amountAtRisk: Number(raw.amountAtRisk ?? raw.amount_at_risk ?? 0),
+        riskScore: Number(raw.riskScore ?? raw.risk_score ?? 0),
+      };
+      _dashboardSummaryCache.set(email, {
+        expires: Date.now() + DASHBOARD_SUMMARY_TTL_MS,
+        value,
+      });
+      return value;
+    } finally {
+      _dashboardSummaryInflight.delete(email);
+    }
+  })();
+
+  _dashboardSummaryInflight.set(email, p);
+  return p;
 }
 
 // ── Upload API ────────────────────────────────────────────────────────────────

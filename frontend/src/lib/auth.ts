@@ -24,6 +24,9 @@ function fraudchillsPostgresAdapter(client: Pool): Adapter {
 export const authOptions: NextAuthOptions = {
   adapter: fraudchillsPostgresAdapter(pool),
   secret: process.env.NEXTAUTH_SECRET,
+  // Required when using Credentials alongside a DB adapter; database sessions break that combo
+  // and often surface as OAuth `error=Callback` when the auth flow shares the same config.
+  session: { strategy: "jwt", maxAge: 30 * 24 * 60 * 60 },
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -68,9 +71,7 @@ export const authOptions: NextAuthOptions = {
   pages: {
     signIn: "/auth/signin",
   },
-  // Enable debug in production temporarily to troubleshoot the redirect mismatch.
-  // Check your Vercel logs to see the exact URL being sent to Google.
-  debug: true,
+  debug: process.env.NODE_ENV === "development" || process.env.NEXTAUTH_DEBUG === "1",
   cookies: {
     sessionToken: {
       name: process.env.NODE_ENV === "production" ? `__Secure-next-auth.session-token` : `next-auth.session-token`,
@@ -94,10 +95,17 @@ export const authOptions: NextAuthOptions = {
       }
       return baseUrl;
     },
-    async session({ session, user }: { session: any; user: any }) {
-      if (session?.user && user) {
-        session.user.id = user.id;
-        session.user.role = user.role ?? "CUSTOMER";
+    async jwt({ token, user }) {
+      if (user) {
+        token.sub = user.id;
+        token.role = (user as { role?: string }).role ?? "CUSTOMER";
+      }
+      return token;
+    },
+    async session({ session, token }) {
+      if (session.user) {
+        session.user.id = token.sub ?? "";
+        session.user.role = (token.role as string) ?? "CUSTOMER";
       }
       return session;
     },
