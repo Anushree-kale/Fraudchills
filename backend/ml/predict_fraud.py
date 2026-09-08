@@ -108,46 +108,32 @@ def _ip_mismatch_heuristic(ip: str, fingerprint: str) -> Tuple[float, List[str]]
         return 0.22, reasons
     return 0.0, reasons
 
-
 def score_request(req: FraudPredictRequest, db=None, user=None) -> Tuple[float, bool, str]:
     """
-    Returns risk_score in [0,1], flagged bool, human reason string.
+    Returns:
+        risk_score: 0–1
+        flagged: whether transaction is classified as fraud
+        reason: human-readable explanation
 
-    With `db` and `user` the XGBoost model scores on live per-entity history and
-    the heuristics are only a fallback. Without them it degrades to heuristics —
-    which is what every call did silently before, because the feature vector had
-    4 columns and the model wants 7.
+    Production scoring:
+        35% heuristic score
+        65% XGBoost probability
+
+    The heuristic uses the same live feature definitions
+    used by the ML model.
     """
+
     score = 0.08
     reasons: List[str] = []
 
-    if req.amount > 25_000:
-        score += 0.18
-        reasons.append("High transaction amount")
-    elif req.amount > 8_000:
-        score += 0.1
+    # ---------------------------------------------------------
+    # Build live features when database/user are available
+    # ---------------------------------------------------------
 
-    if req.num_orders_last_24h > 12:
-        score += 0.28
-        reasons.append("High order velocity")
-    elif req.num_orders_last_24h > 6:
-        score += 0.14
-        reasons.append("Elevated order velocity")
+    feats = None
 
-    if db is None:
-        # No history available: fall back to the hash-bucket toy signal.
-        s, r = _ip_mismatch_heuristic(req.ip_address, req.device_fingerprint)
-        score += s
-        reasons.extend(r)
-
-    if req.card_last4 and not re.fullmatch(r"\d{4}", req.card_last4.strip()):
-        score += 0.05
-        reasons.append("Irregular card pattern")
-
-    xgb = _load_xgb()
-    if xgb is not None and db is not None:
+    if db is not None and user is not None:
         try:
-            import pandas as pd
             from services.tracing import live_features
 
             feats = live_features(
@@ -157,22 +143,137 @@ def score_request(req: FraudPredictRequest, db=None, user=None) -> Tuple[float, 
                 ip=req.ip_address,
                 device_fp=req.device_fingerprint,
             )
-            # Reindex by the model's own feature names so a dict reorder can never
-            # silently shift columns again.
-            X = pd.DataFrame([feats])[list(xgb.feature_names_in_)]
-            proba = float(xgb.predict_proba(X)[0][1])
-            score = 0.35 * score + 0.65 * proba
-            reasons.append(f"Model score {proba:.2f}")
-            if feats["ip_mismatch"]:
-                reasons.append("New IP for this account")
-            if feats["device_mismatch"]:
-                reasons.append("New device for this account")
+            
         except Exception as exc:
-            # Loud: a silent pass here is what hid the shape mismatch.
-            print(f"ML: model scoring failed, using heuristics only: {exc!r}")
+            print(f"ML: live feature extraction failed: {exc!r}")
+
+    # ---------------------------------------------------------
+    # Heuristic signals
+    # ---------------------------------------------------------
+
+    # Amount
+    if req.amount > 25_000:
+        score += 0.18
+        reasons.append("High transaction amount")
+
+    elif req.amount > 8_000:
+        score += 0.10
+        reasons.append("Elevated transaction amount")
+
+    # Order velocity
+    if feats is not None:
+        velocity = feats["order_velocity_24h"]
+
+        if velocity > 12:
+            score += 0.28
+            reasons.append("High order velocity")
+
+        elif velocity > 6:
+            score += 0.14
+            reasons.append("Elevated order velocity")
+
+    else:
+        # Fallback when database history is unavailable
+        if req.num_orders_last_24h > 12:
+            score += 0.28
+            reasons.append("High order velocity")
+
+        elif req.num_orders_last_24h > 6:
+            score += 0.14
+            reasons.append("Elevated order velocity")
+
+    # IP mismatch
+    if feats is not None:
+
+        if feats["ip_mismatch"]:
+            score += 0.22
+            reasons.append("New IP for this account")
+
+    else:
+        s, r = _ip_mismatch_heuristic(
+            req.ip_address,
+            req.device_fingerprint
+        )
+
+        score += s
+        reasons.extend(r)
+
+    # Device mismatch
+    if feats is not None:
+
+        if feats["device_mismatch"]:
+            score += 0.10
+            reasons.append("New device for this account")
+
+    # Card format check
+    if (
+        req.card_last4
+        and not re.fullmatch(
+            r"\d{4}",
+            req.card_last4.strip()
+        )
+    ):
+        score += 0.05
+        reasons.append("Irregular card pattern")
+
+    # Keep heuristic score within [0,1]
+    score = float(
+        max(0.0, min(1.0, score))
+    )
+
+    # ---------------------------------------------------------
+    # XGBoost
+    # ---------------------------------------------------------
+
+    xgb = _load_xgb()
+
+    if xgb is not None and feats is not None:
+
+        try:
+            import pandas as pd
+
+            X = pd.DataFrame([feats])[
+                list(xgb.feature_names_in_)
+            ]
+
+            proba = float(
+                xgb.predict_proba(X)[0][1]
+            )
+          
+            # Production blend
+            score = (
+                0.35 * score
+                + 0.65 * proba
+            )
+
+            reasons.append(
+                f"Model score {proba:.2f}"
+            )
+
+        except Exception as exc:
+
+            print(
+                f"ML: model scoring failed, "
+                f"using heuristics only: {exc!r}"
+            )
+
             reasons.append("Model unavailable")
 
-    score = float(max(0.0, min(1.0, score)))
-    flagged = score >= 0.65
-    reason = " + ".join(reasons) if reasons else "Within normal parameters"
+    # ---------------------------------------------------------
+    # Final score
+    # ---------------------------------------------------------
+
+    score = float(
+        max(0.0, min(1.0, score))
+    )
+
+    # Tuned production threshold
+    flagged = score >= 0.20
+
+    reason = (
+        " + ".join(reasons)
+        if reasons
+        else "Within normal parameters"
+    )
+
     return round(score, 4), flagged, reason

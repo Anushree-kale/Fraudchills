@@ -78,14 +78,13 @@ def predict_fraud(
         if risk_score_percent >= 70:
             risk_label = "HIGH"
             recommendation = "BLOCK"
-
-        elif risk_score_percent >= 40:
+        elif risk_score_percent >= 20:
             risk_label = "MEDIUM"
             recommendation = "REVIEW"
-
         else:
             risk_label = "LOW"
             recommendation = "ALLOW"
+
 
         # --------------------------------------------------------------
         # 4. Record event AFTER prediction
