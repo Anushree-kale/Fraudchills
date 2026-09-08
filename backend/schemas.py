@@ -436,3 +436,41 @@ class FraudPredictResponse(BaseModel):
     risk_score: float
     flagged: bool
     reason: str
+    event_id: Optional[str] = None
+
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+    )
+
+
+# ── Event Schemas ─────────────────────────────────────────────────────────────
+
+class EventLabelUpdate(BaseModel):
+    label: int = Field(..., description="0 for Legitimate, 1 for Fraud")
+
+
+class EventOut(BaseModel):
+    id: str
+    user_id: Optional[str] = None
+    event_type: str = "TRANSACTION"
+    amount: float = 0.0
+    ip: Optional[str] = None
+    device_fp: Optional[str] = None
+    email_norm: Optional[str] = None
+    card_hash: Optional[str] = None
+    phone: Optional[str] = None
+    risk_score: Optional[float] = None
+    label: Optional[int] = None
+    created_at: Optional[datetime] = None
+
+    @field_validator("id", "user_id", mode="before")
+    @classmethod
+    def id_as_str(cls, v):
+        return str(v) if v is not None else None
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        alias_generator=to_camel,
+        populate_by_name=True,
+    )

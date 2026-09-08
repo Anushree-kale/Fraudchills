@@ -187,6 +187,22 @@ export interface FraudPredictResult {
   riskScore: number;
   flagged: boolean;
   reason: string;
+  eventId?: string;
+}
+
+export interface FraudEvent {
+  id: string;
+  userId?: string;
+  eventType: string;
+  amount: number;
+  ip?: string | null;
+  deviceFp?: string | null;
+  emailNorm?: string | null;
+  cardHash?: string | null;
+  phone?: string | null;
+  riskScore?: number | null;
+  label?: number | null; // 0 = Legitimate, 1 = Fraud, null = Unlabeled
+  createdAt: string;
 }
 
 export interface ActiveCase {
@@ -269,10 +285,29 @@ export function normalizeMlHealth(raw: Record<string, unknown>): MlHealth {
 }
 
 export function normalizeFraudPredict(raw: Record<string, unknown>): FraudPredictResult {
+  const eventIdRaw = raw.eventId ?? raw.event_id;
   return {
     riskScore: Number(raw.riskScore ?? raw.risk_score ?? 0),
     flagged: Boolean(raw.flagged),
     reason: String(raw.reason ?? ""),
+    eventId: eventIdRaw ? String(eventIdRaw) : undefined,
+  };
+}
+
+export function normalizeFraudEvent(r: any): FraudEvent {
+  return {
+    id: String(r.id),
+    userId: r.userId || r.user_id ? String(r.userId || r.user_id) : undefined,
+    eventType: String(r.eventType || r.event_type || "TRANSACTION"),
+    amount: Number(r.amount ?? 0),
+    ip: r.ip ?? null,
+    deviceFp: r.deviceFp ?? r.device_fp ?? null,
+    emailNorm: r.emailNorm ?? r.email_norm ?? null,
+    cardHash: r.cardHash ?? r.card_hash ?? null,
+    phone: r.phone ?? null,
+    riskScore: r.riskScore != null ? Number(r.riskScore) : (r.risk_score != null ? Number(r.risk_score) : null),
+    label: r.label != null ? Number(r.label) : null,
+    createdAt: String(r.createdAt || r.created_at || ""),
   };
 }
 
@@ -532,4 +567,50 @@ export async function fetchNotifications(email: string, skip = 0, limit = 20): P
 
 export async function markNotificationRead(id: string, email: string): Promise<{ success: boolean }> {
   return apiFetchJson<{ success: boolean }>(`/users/me/notifications/${id}/read`, email, { method: "POST" });
+}
+
+// ── Events API ────────────────────────────────────────────────────────────────
+
+export interface EventsFilter {
+  unlabeledOnly?: boolean;
+  limit?: number;
+  skip?: number;
+}
+
+export async function fetchEvents(
+  email: string,
+  filters: EventsFilter = {}
+): Promise<FraudEvent[]> {
+  const params = new URLSearchParams();
+  if (filters.unlabeledOnly) params.set("unlabeled_only", "true");
+  if (filters.limit != null) params.set("limit", String(filters.limit));
+  if (filters.skip != null) params.set("skip", String(filters.skip));
+  const qs = params.toString();
+  const raw = await apiFetchJson<unknown[]>(`/api/events${qs ? `?${qs}` : ""}`, email);
+  if (!Array.isArray(raw)) return [];
+  return raw.map(normalizeFraudEvent);
+}
+
+export async function fetchEvent(email: string, eventId: string): Promise<FraudEvent> {
+  const raw = await apiFetchJson<Record<string, unknown>>(
+    `/api/events/${encodeURIComponent(eventId)}`,
+    email
+  );
+  return normalizeFraudEvent(raw);
+}
+
+export async function updateEventLabel(
+  email: string,
+  eventId: string,
+  label: number
+): Promise<FraudEvent> {
+  const raw = await apiFetchJson<Record<string, unknown>>(
+    `/api/events/${encodeURIComponent(eventId)}/label`,
+    email,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ label }),
+    }
+  );
+  return normalizeFraudEvent(raw);
 }

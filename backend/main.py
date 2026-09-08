@@ -26,7 +26,7 @@ load_dotenv()
 if not os.getenv("DATABASE_URL") and not os.getenv("SUPABASE_DB_PASSWORD"):
     load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
-from routers import activity, admin, analytics, api, auth_api, brands, cases, complaints, dashboard, users
+from routers import activity, admin, analytics, api, auth_api, brands, cases, complaints, dashboard, events, users
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -127,6 +127,7 @@ app.include_router(auth_api.router, prefix="/auth", tags=["Auth"])
 app.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboard"])
 app.include_router(cases.router, prefix="/cases", tags=["Cases"])
 app.include_router(activity.router, prefix="/activity", tags=["Activity"])
+app.include_router(events.router, prefix="/api/events", tags=["Events"])
 
 # ── Health ─────────────────────────────────────────────────────────────────────
 @app.get("/", tags=["Health"])
@@ -216,8 +217,9 @@ def predict_fraud(
 
     # Committed on its own: the event is what future requests score against, so it
     # must not be lost to a fraud_logs rollback.
+    event_id = None
     try:
-        record_event(
+        ev = record_event(
             db,
             user_id=current_user.id,
             amount=body.amount,
@@ -226,6 +228,8 @@ def predict_fraud(
             device_fp=body.device_fingerprint,
         )
         db.commit()
+        db.refresh(ev)
+        event_id = str(ev.id)
     except Exception as exc:
         db.rollback()
         print(f"WARN: failed to record event: {exc!r}")
@@ -254,7 +258,12 @@ def predict_fraud(
             json.dumps(body.model_dump())
         )
 
-    return schemas.FraudPredictResponse(risk_score=risk, flagged=flagged, reason=reason)
+    return schemas.FraudPredictResponse(
+        risk_score=risk,
+        flagged=flagged,
+        reason=reason,
+        event_id=event_id,
+    )
 
 @app.get("/trace/{user_id}", tags=["ML"])
 def trace_user(

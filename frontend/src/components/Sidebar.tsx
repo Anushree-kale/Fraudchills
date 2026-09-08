@@ -32,6 +32,7 @@ export default function Sidebar() {
       items: [
         { name: "Fraud Analytics", href: "/analytics", dotColor: "bg-[#8B8B82] opacity-40" },
         { name: "ML Risk Score", href: "/ml-score", dotColor: "bg-[#8B8B82] opacity-40" },
+        { name: "Event Labeling", href: "/events", dotColor: "bg-[#8B8B82] opacity-40" },
         { name: "Timeline Viewer", href: "/timeline", dotColor: "bg-[#8B8B82] opacity-40" },
       ],
     },
