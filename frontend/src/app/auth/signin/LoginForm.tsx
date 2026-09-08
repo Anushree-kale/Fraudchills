@@ -13,8 +13,8 @@ function getErrorMessage(err: string) {
       return "This email is already associated with another provider.";
     case "Callback":
       return (
-        "Sign-in could not finish (often a database timeout from the hosting region, or Google redirect / NEXTAUTH_URL mismatch). " +
-        "If it keeps happening, try email login or confirm Vercel has DATABASE_URL (external Postgres URL), NEXTAUTH_URL, and Google’s redirect URI " +
+        "Sign-in could not finish (often Supabase DATABASE_URL / password, or Google redirect / NEXTAUTH_URL mismatch). " +
+        "If it keeps happening, try email login or confirm Vercel has DATABASE_URL (Supabase → Database → Connection string), NEXTAUTH_URL, and Google’s redirect URI " +
         "https://your-domain/api/auth/callback/google."
       );
     default:

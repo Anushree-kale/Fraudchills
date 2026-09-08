@@ -33,7 +33,7 @@
 
 - Python 3.9+
 - Node.js 18+
-- PostgreSQL
+- PostgreSQL (Supabase recommended for production; Docker Compose for local)
 
 ### Installation
 
@@ -51,10 +51,12 @@ cd backend
 pip install -r requirements.txt
 ```
 
-Copy `.env.example` to `.env` and configure the following variables:
+Copy `backend/.env.example` to `.env` and configure:
 
 ```env
-DATABASE_URL=postgresql://user:password@localhost:5432/fraudchills
+# Supabase Postgres (Settings → Database → Connection string)
+DATABASE_URL=postgresql://postgres.[ref]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres
+# or SUPABASE_URL + SUPABASE_DB_PASSWORD
 HF_TOKEN=your_huggingface_token
 ```
 

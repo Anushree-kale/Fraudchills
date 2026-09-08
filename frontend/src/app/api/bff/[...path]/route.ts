@@ -101,7 +101,7 @@ async function proxy(req: NextRequest, pathSegments: string[]) {
     }
 
     // Buffer upstream body — passing res.body (ReadableStream) into NextResponse often throws on Vercel
-    // even when Render returned 200, which surfaces as "Proxy error" with no useful Render logs.
+    // even when the upstream API returned 200, which surfaces as "Proxy error" with no useful upstream logs.
     const payload = await res.arrayBuffer();
     const out = new NextResponse(payload, { status: res.status });
     const ct = res.headers.get("content-type");

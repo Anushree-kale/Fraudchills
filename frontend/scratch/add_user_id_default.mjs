@@ -2,14 +2,15 @@ import pg from 'pg';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { resolveDatabaseUrl, remoteSslConfig, stripSslQueryParams } from './resolve-database-url.mjs';
 
-// Load .env.local which contains DATABASE_URL
 dotenv.config({ path: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.env.local') });
+dotenv.config({ path: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../backend/.env') });
 
-const { Pool } = pg;
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
+const connectionString = resolveDatabaseUrl();
+const pool = new pg.Pool({
+  connectionString: stripSslQueryParams(connectionString),
+  ssl: remoteSslConfig(connectionString),
 });
 
 async function addDefault() {
@@ -19,9 +20,10 @@ async function addDefault() {
       ALTER TABLE users
       ALTER COLUMN id SET DEFAULT gen_random_uuid();
     `);
-    console.log('✅ Migration completed successfully.');
+    console.log('Migration completed successfully.');
   } catch (err) {
-    console.error('❌ Migration failed:', err);
+    console.error('Migration failed:', err);
+    process.exitCode = 1;
   } finally {
     await pool.end();
   }

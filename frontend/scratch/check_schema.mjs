@@ -2,17 +2,18 @@ import pg from 'pg';
 import path from 'path';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
+import { resolveDatabaseUrl, remoteSslConfig, stripSslQueryParams } from './resolve-database-url.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 dotenv.config({ path: path.resolve(__dirname, '../.env.local') });
+dotenv.config({ path: path.resolve(__dirname, '../../backend/.env') });
 
-const connectionString = process.env.DATABASE_URL;
-
+const connectionString = resolveDatabaseUrl();
 const pool = new pg.Pool({
-  connectionString,
-  ssl: { rejectUnauthorized: false }
+  connectionString: stripSslQueryParams(connectionString),
+  ssl: remoteSslConfig(connectionString),
 });
 
 async function checkSchema() {
@@ -34,6 +35,7 @@ async function checkSchema() {
     }
   } catch (err) {
     console.error('Error checking schema:', err);
+    process.exitCode = 1;
   } finally {
     await pool.end();
   }

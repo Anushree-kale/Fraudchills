@@ -23,7 +23,7 @@ from dotenv import load_dotenv
 
 # Try loading from current dir, then from parent (root)
 load_dotenv()
-if not os.getenv("DATABASE_URL"):
+if not os.getenv("DATABASE_URL") and not os.getenv("SUPABASE_DB_PASSWORD"):
     load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 from routers import activity, admin, analytics, api, auth_api, brands, cases, complaints, dashboard, users
@@ -112,7 +112,7 @@ async def upload_file(
     with open(file_path, "wb") as buffer:
         buffer.write(contents)
 
-    # Generate dynamic URL based on request host (e.g. Render)
+    # Generate public URL for uploaded file from request host.
     base_url = str(request.base_url).rstrip("/")
     return {"fileUrl": f"{base_url}/uploads/{unique_filename}"}
 
