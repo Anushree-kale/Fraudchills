@@ -131,3 +131,30 @@ class FraudLog(Base):
     reason = Column(Text)
     raw_payload = Column(Text)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class Event(Base):
+    """Every scoreable action, with the identifiers that link actors to each other.
+
+    This is the substrate for both real-time features and entity tracing: without
+    per-entity history there is nothing to compute velocity or linkage from.
+    """
+
+    __tablename__ = "events"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
+    event_type = Column(String, default="TRANSACTION")
+    amount = Column(Float, default=0.0)
+
+    # Linkage identifiers. NULL (never "") when unknown — SQL joins skip NULLs,
+    # which is exactly the behaviour tracing needs.
+    ip = Column(String, index=True)
+    device_fp = Column(String, index=True)
+    email_norm = Column(String, index=True)
+    card_hash = Column(String, index=True)
+    phone = Column(String, index=True)
+
+    risk_score = Column(Float)
+    label = Column(Integer, nullable=True)  # 1 fraud, 0 legit, NULL unresolved
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)

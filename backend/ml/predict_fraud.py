@@ -11,7 +11,6 @@ import os
 import re
 from typing import List, Tuple
 
-import numpy as np
 import requests
 
 from schemas import FraudPredictRequest
@@ -110,9 +109,14 @@ def _ip_mismatch_heuristic(ip: str, fingerprint: str) -> Tuple[float, List[str]]
     return 0.0, reasons
 
 
-def score_request(req: FraudPredictRequest) -> Tuple[float, bool, str]:
+def score_request(req: FraudPredictRequest, db=None, user=None) -> Tuple[float, bool, str]:
     """
     Returns risk_score in [0,1], flagged bool, human reason string.
+
+    With `db` and `user` the XGBoost model scores on live per-entity history and
+    the heuristics are only a fallback. Without them it degrades to heuristics —
+    which is what every call did silently before, because the feature vector had
+    4 columns and the model wants 7.
     """
     score = 0.08
     reasons: List[str] = []
@@ -130,26 +134,43 @@ def score_request(req: FraudPredictRequest) -> Tuple[float, bool, str]:
         score += 0.14
         reasons.append("Elevated order velocity")
 
-    s, r = _ip_mismatch_heuristic(req.ip_address, req.device_fingerprint)
-    score += s
-    reasons.extend(r)
+    if db is None:
+        # No history available: fall back to the hash-bucket toy signal.
+        s, r = _ip_mismatch_heuristic(req.ip_address, req.device_fingerprint)
+        score += s
+        reasons.extend(r)
 
     if req.card_last4 and not re.fullmatch(r"\d{4}", req.card_last4.strip()):
         score += 0.05
         reasons.append("Irregular card pattern")
 
     xgb = _load_xgb()
-    if xgb is not None:
+    if xgb is not None and db is not None:
         try:
-            X = np.array(
-                [[req.amount, req.num_orders_last_24h, float(len(req.ip_address)), float(len(req.device_fingerprint))]],
-                dtype=np.float32,
+            import pandas as pd
+            from services.tracing import live_features
+
+            feats = live_features(
+                db,
+                user,
+                amount=req.amount,
+                ip=req.ip_address,
+                device_fp=req.device_fingerprint,
             )
+            # Reindex by the model's own feature names so a dict reorder can never
+            # silently shift columns again.
+            X = pd.DataFrame([feats])[list(xgb.feature_names_in_)]
             proba = float(xgb.predict_proba(X)[0][1])
-            score = 0.5 * score + 0.5 * proba
-            reasons.append("Model blend (XGBoost)")
-        except Exception:
-            pass
+            score = 0.35 * score + 0.65 * proba
+            reasons.append(f"Model score {proba:.2f}")
+            if feats["ip_mismatch"]:
+                reasons.append("New IP for this account")
+            if feats["device_mismatch"]:
+                reasons.append("New device for this account")
+        except Exception as exc:
+            # Loud: a silent pass here is what hid the shape mismatch.
+            print(f"ML: model scoring failed, using heuristics only: {exc!r}")
+            reasons.append("Model unavailable")
 
     score = float(max(0.0, min(1.0, score)))
     flagged = score >= 0.65

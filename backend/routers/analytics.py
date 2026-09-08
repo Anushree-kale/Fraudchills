@@ -70,13 +70,21 @@ def get_analytics_trends(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    """Get time-based trend data using PostgreSQL date_trunc."""
+    """Get time-based trend data using date grouping compatible with PostgreSQL and SQLite."""
     if period not in ["week", "month"]:
         period = "month"
 
+    if db.bind.dialect.name == "sqlite":
+        if period == "month":
+            p_label_expr = func.strftime("%Y-%m-01 00:00:00", models.Complaint.created_at)
+        else:
+            p_label_expr = func.strftime("%Y-%W", models.Complaint.created_at)
+    else:
+        p_label_expr = func.date_trunc(period, models.Complaint.created_at)
+
     trends = (
         db.query(
-            func.date_trunc(period, models.Complaint.created_at).label('p_label'),
+            p_label_expr.label('p_label'),
             func.count(models.Complaint.id).label('count'),
             func.avg(models.Complaint.score).label('avg_score')
         )
@@ -86,9 +94,21 @@ def get_analytics_trends(
         .all()
     )
 
+    def parse_p_label(p_label) -> str:
+        if not p_label:
+            return "N/A"
+        if isinstance(p_label, str):
+            if len(p_label) >= 10 and p_label[4] == '-' and p_label[7] == '-':
+                return p_label[:10]
+            return p_label
+        try:
+            return str(p_label.date())
+        except AttributeError:
+            return str(p_label)
+
     return [
         schemas.TrendData(
-            period_label=str(t.p_label.date()) if t.p_label else "N/A",
+            period_label=parse_p_label(t.p_label),
             count=t.count,
             avg_score=round(t.avg_score or 0.0, 2)
         ) for t in trends

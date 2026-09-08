@@ -1,5 +1,9 @@
 import os
 import sys
+
+# Set DATABASE_URL to sqlite for tests before importing main or database
+os.environ["DATABASE_URL"] = "sqlite:///./_tmp_test.db"
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine

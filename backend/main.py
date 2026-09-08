@@ -203,15 +203,32 @@ def predict_fraud(
 ):
     """Real-time fraud score (0–1) with audit row in fraud_logs."""
     from ml.predict_fraud import score_request
+    from services.tracing import record_event
     from utils.alerts import send_fraud_alert
 
-    risk, flagged, reason = score_request(body)
+    risk, flagged, reason = score_request(body, db=db, user=current_user)
     complaint_uuid = None
     if body.complaint_id:
         try:
             complaint_uuid = UUID(body.complaint_id)
         except ValueError:
             complaint_uuid = None
+
+    # Committed on its own: the event is what future requests score against, so it
+    # must not be lost to a fraud_logs rollback.
+    try:
+        record_event(
+            db,
+            user_id=current_user.id,
+            amount=body.amount,
+            risk_score=risk,
+            ip=body.ip_address,
+            device_fp=body.device_fingerprint,
+        )
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        print(f"WARN: failed to record event: {exc!r}")
 
     log = models.FraudLog(
         complaint_id=complaint_uuid,
@@ -238,6 +255,20 @@ def predict_fraud(
         )
 
     return schemas.FraudPredictResponse(risk_score=risk, flagged=flagged, reason=reason)
+
+@app.get("/trace/{user_id}", tags=["ML"])
+def trace_user(
+    user_id: UUID,
+    max_depth: int = 3,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Trace the ring behind an account: everyone reachable through a shared
+    device, IP, card or contact detail, plus that cluster's aggregate exposure."""
+    from services.tracing import ring_risk
+
+    return ring_risk(db, user_id, max_depth=max_depth)
+
 
 if __name__ == "__main__":
     import uvicorn
