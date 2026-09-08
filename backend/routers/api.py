@@ -1,12 +1,16 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+
 from database import get_db
 import schemas
 import models
+
 from auth import get_api_key
-from ml.scorer import score_complaint, risk_label
+from ml.predict_fraud import score_request
+from services.tracing import record_event
 
 router = APIRouter()
+
 
 @router.post("/predict-fraud", response_model=schemas.PredictionResponse)
 def predict_fraud(
@@ -15,52 +19,127 @@ def predict_fraud(
     db: Session = Depends(get_db),
 ):
     """
-    B2B fraud prediction endpoint.
-    Uses transaction data to return a risk score and recommendation.
+    B2B real-time fraud prediction endpoint.
+
+    Flow:
+    1. Authenticate API key
+    2. Resolve API-key owner
+    3. Build historical fraud features
+    4. Run fraud scoring model
+    5. Store the event for future velocity/tracing
+    6. Return risk score and recommendation
     """
-    # ── Business Logic ─────────────────────────────────────────────────────────
-    # Since we don't have a separate transaction-only model trained yet,
-    # we'll map the transaction fields to a mock ComplaintCreate object
-    # for the current scorer to process.
-    # In a real app, you'd use a different _onnx_score(transaction_features).
-    
-    # Simple risk logic for demo purposes:
-    # 1. high amount (> 5000) increases risk
-    # 2. velocity (> 3 orders/24h) increases risk
-    
-    base_score = 10.0
-    if payload.amount > 5000:
-        base_score += 30.0
-    if payload.num_orders_last_24h > 3:
-        base_score += 40.0
-    
-    # Mocking a "details" text for the scorer
-    mock_details = f"Transaction of {payload.amount} from {payload.ip_address}. Orders: {payload.num_orders_last_24h}."
-    
-    # We call the already-implemented scorer
-    mock_payload = schemas.ComplaintCreate(
-        type="BUYER_FRAUD",
-        details=mock_details,
-        brand_name="ExternalAPI", # Placeholder
-        proof_urls=[],
-        external_links=[],
-        image_url=None
+
+    # ------------------------------------------------------------------
+    # 1. Resolve the user that owns this API key
+    # ------------------------------------------------------------------
+
+    user = (
+        db.query(models.User)
+        .filter(models.User.id == api_key.user_id)
+        .first()
     )
-    
-    score = score_complaint(mock_payload)
-    # Average the base transaction risk and the scorer output
-    final_score = round((base_score + score) / 2, 2)
-    label = risk_label(final_score)
-    
-    # Recommendation logic
-    recommendation = "ALLOW"
-    if final_score >= 70:
-        recommendation = "BLOCK"
-    elif final_score >= 40:
-        recommendation = "REVIEW"
-        
-    return schemas.PredictionResponse(
-        risk_score=final_score,
-        risk_label=label,
-        recommendation=recommendation
-    )
+
+    if not user:
+        raise HTTPException(
+            status_code=401,
+            detail="API key owner not found.",
+        )
+
+    try:
+        # --------------------------------------------------------------
+        # 2. Run real fraud scoring pipeline
+        #
+        # score_request() internally calls live_features(), which gets:
+        #
+        # amount
+        # account_age_days
+        # transaction_hour
+        # ip_mismatch
+        # device_mismatch
+        # order_velocity_24h
+        # prior_complaints
+        #
+        # from the database/history.
+        # --------------------------------------------------------------
+
+        risk_score, flagged, reason = score_request(
+              payload,
+              db=db,
+              user=user,
+        )
+
+        # --------------------------------------------------------------
+        # 3. Convert 0-1 ML score into API's existing 0-100 format
+        # --------------------------------------------------------------
+
+        risk_score_percent = round(risk_score * 100, 2)
+
+        if risk_score_percent >= 70:
+            risk_label = "HIGH"
+            recommendation = "BLOCK"
+
+        elif risk_score_percent >= 40:
+            risk_label = "MEDIUM"
+            recommendation = "REVIEW"
+
+        else:
+            risk_label = "LOW"
+            recommendation = "ALLOW"
+
+        # --------------------------------------------------------------
+        # 4. Record event AFTER prediction
+        #
+        # Important:
+        # Prediction happens first so the current transaction does not
+        # count itself in order_velocity_24h.
+        # --------------------------------------------------------------
+
+        record_event(
+            db=db,
+            user_id=user.id,
+            amount=payload.amount,
+            risk_score=risk_score,
+            ip=payload.ip_address,
+            device_fp=payload.device_fingerprint,
+
+            # We can safely use the authenticated user's email.
+            email=user.email,
+
+            # DO NOT hash card_last4 as though it were a complete card.
+            # Keep this NULL until proper tokenized/card fingerprint data
+            # is available.
+            card=None,
+
+            # Phone is not currently part of PredictionRequest.
+            phone=None,
+
+            event_type="TRANSACTION",
+        )
+
+        # record_event() adds the event but intentionally leaves the
+        # transaction commit to the caller.
+        db.commit()
+
+        # --------------------------------------------------------------
+        # 5. Return API response
+        # --------------------------------------------------------------
+
+        return schemas.PredictionResponse(
+            risk_score=risk_score_percent,
+            risk_label=risk_label,
+            recommendation=recommendation,
+        )
+
+    except HTTPException:
+        raise
+
+    except Exception as exc:
+        db.rollback()
+
+        print("PREDICT-FRAUD ERROR:", repr(exc))
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Fraud prediction failed: {exc}",
+        ) from exc

@@ -16,34 +16,55 @@ def supabase_project_ref() -> str | None:
         return None
     m = re.match(r"https?://([a-z0-9]+)\.supabase\.co", base, re.I)
     return m.group(1) if m else None
-
-
 def resolve_database_url() -> str:
     """
-    Prefer DATABASE_URL when set. Otherwise build a Supabase Postgres URI from
-    SUPABASE_URL + SUPABASE_DB_PASSWORD (Settings → Database in Supabase dashboard).
+    Prefer DATABASE_URL when set.
+
+    Otherwise build a Supabase Postgres URI from:
+    SUPABASE_URL + SUPABASE_DB_PASSWORD
+
+    If SUPABASE_DB_HOST is provided, use the Supabase pooler/direct host.
+    Otherwise fall back to the project's db.<ref>.supabase.co host.
     """
+
     direct = (os.getenv("DATABASE_URL") or "").strip()
+
     if direct:
         return direct
 
-    password = (os.getenv("SUPABASE_DB_PASSWORD") or os.getenv("POSTGRES_PASSWORD") or "").strip()
+    password = (
+        os.getenv("SUPABASE_DB_PASSWORD")
+        or os.getenv("POSTGRES_PASSWORD")
+        or ""
+    ).strip()
+
     ref = supabase_project_ref()
+
     if not password or not ref:
         raise RuntimeError(
-            "DATABASE_URL is not set. Add your Supabase Postgres URI to backend/.env "
-            "(Supabase → Project Settings → Database → Connection string → URI), "
-            "or set SUPABASE_URL and SUPABASE_DB_PASSWORD."
+            "DATABASE_URL is not set. Add your Supabase Postgres URI to "
+            "backend/.env (Supabase → Project Settings → Database → "
+            "Connection string → URI), or set SUPABASE_URL and "
+            "SUPABASE_DB_PASSWORD."
         )
 
     pooler_host = (os.getenv("SUPABASE_DB_HOST") or "").strip()
+
     if pooler_host:
         port = (os.getenv("SUPABASE_DB_PORT") or "6543").strip()
-        user = f"postgres.{ref}" if "pooler" in pooler_host else "postgres"
-    return (
-            f"postgresql://{user}:{quote_plus(password)}@{pooler_host}:{port}/postgres"
+
+        user = (
+            f"postgres.{ref}"
+            if "pooler" in pooler_host
+            else "postgres"
+        )
+
+        return (
+            f"postgresql://{user}:{quote_plus(password)}"
+            f"@{pooler_host}:{port}/postgres"
         )
 
     return (
-        f"postgresql://postgres:{quote_plus(password)}@db.{ref}.supabase.co:5432/postgres"
+        f"postgresql://postgres:{quote_plus(password)}"
+        f"@db.{ref}.supabase.co:5432/postgres"
     )

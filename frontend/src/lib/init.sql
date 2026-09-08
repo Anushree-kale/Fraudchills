@@ -15,7 +15,56 @@ CREATE TABLE IF NOT EXISTS users (
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );
+CREATE TABLE IF NOT EXISTS events (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
 
+  user_id uuid NOT NULL
+    REFERENCES users(id) ON DELETE CASCADE,
+
+  event_type text NOT NULL,
+
+  amount float8 DEFAULT 0.0,
+
+  created_at timestamptz DEFAULT now(),
+
+  ip text,
+  device_fp text,
+  email_norm text,
+  card_hash text,
+  phone text,
+
+  risk_score float8,
+
+  -- NULL = not yet confirmed
+  -- 0 = legitimate
+  -- 1 = fraud
+  label integer,
+
+  CONSTRAINT events_label_check
+    CHECK (label IS NULL OR label IN (0, 1))
+);
+
+CREATE INDEX IF NOT EXISTS idx_events_user_id
+  ON events(user_id);
+
+CREATE INDEX IF NOT EXISTS idx_events_created_at
+  ON events(created_at);
+
+CREATE INDEX IF NOT EXISTS idx_events_ip
+  ON events(ip);
+
+CREATE INDEX IF NOT EXISTS idx_events_device_fp
+  ON events(device_fp);
+
+CREATE INDEX IF NOT EXISTS idx_events_card_hash
+  ON events(card_hash);
+
+CREATE INDEX IF NOT EXISTS idx_events_email_norm
+  ON events(email_norm);
+
+CREATE INDEX IF NOT EXISTS idx_events_phone
+  ON events(phone);
+  
 CREATE TABLE IF NOT EXISTS accounts (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   "userId" uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -134,4 +183,17 @@ CREATE TABLE IF NOT EXISTS api_keys (
 );
 
 -- Circular reference: users and brands
-ALTER TABLE users ADD CONSTRAINT users_brand_id_fkey FOREIGN KEY (brand_id) REFERENCES brands(id);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'users_brand_id_fkey'
+      AND conrelid = 'users'::regclass
+  ) THEN
+    ALTER TABLE users
+      ADD CONSTRAINT users_brand_id_fkey
+      FOREIGN KEY (brand_id)
+      REFERENCES brands(id);
+  END IF;
+END $$;
