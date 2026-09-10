@@ -33,7 +33,7 @@ ALTER TABLE notifications ALTER COLUMN user_id TYPE uuid USING user_id::uuid;
 ALTER TABLE api_keys ALTER COLUMN user_id TYPE uuid USING user_id::uuid;
 ALTER TABLE brands ALTER COLUMN claimed_by TYPE uuid USING (claimed_by::uuid);
 
-CREATE UNIQUE INDEX user_complaint_vote_unique ON complaint_votes (user_id, complaint_id);
+CREATE UNIQUE INDEX IF NOT EXISTS user_complaint_vote_unique ON complaint_votes (user_id, complaint_id);
 
 CREATE UNIQUE INDEX IF NOT EXISTS complaints_case_number_key ON complaints (case_number);
 ALTER TABLE complaints ALTER COLUMN case_number SET NOT NULL;
@@ -85,6 +85,37 @@ CREATE INDEX IF NOT EXISTS ix_incidents_order_id
 
 CREATE INDEX IF NOT EXISTS ix_incidents_created_at
     ON incidents(created_at);
+
+
+-- =========================================================
+-- CASE OUTCOMES / LIFECYCLE
+-- =========================================================
+
+CREATE TABLE IF NOT EXISTS case_outcomes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    incident_id UUID NOT NULL
+        REFERENCES incidents(id)
+        ON DELETE CASCADE,
+
+    outcome VARCHAR NOT NULL,
+
+    reason TEXT,
+
+    recorded_by UUID NOT NULL
+        REFERENCES users(id),
+
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS ix_case_outcomes_incident_id
+    ON case_outcomes(incident_id);
+
+CREATE INDEX IF NOT EXISTS ix_case_outcomes_recorded_by
+    ON case_outcomes(recorded_by);
+
+CREATE INDEX IF NOT EXISTS ix_case_outcomes_created_at
+    ON case_outcomes(created_at);
 
 
 -- =========================================================

@@ -367,6 +367,173 @@ def create_complaint(
 
     return schemas.Complaint.model_validate(complaint)
 
+# ── CASE LIFECYCLE ─────────────────────────────────────────────────────────────
+CASE_STATUS_TRANSITIONS = {
+    "PENDING": {"UNDER_REVIEW", "AWAITING_EVIDENCE"},
+    "UNDER_REVIEW": {"AWAITING_EVIDENCE", "RESPONDED", "RESOLVED", "UNRESOLVED", "INCONCLUSIVE"},
+    "AWAITING_EVIDENCE": {"UNDER_REVIEW", "RESPONDED"},
+    "RESPONDED": {"UNDER_REVIEW", "RESOLVED", "UNRESOLVED", "INCONCLUSIVE"},
+    "RESOLVED": set(),
+    "UNRESOLVED": set(),
+    "INCONCLUSIVE": set(),
+}
+
+
+def _get_incident_for_complaint(db: Session, complaint_id: UUID):
+    link = (
+        db.query(models.IncidentComplaint)
+        .filter(models.IncidentComplaint.complaint_id == complaint_id)
+        .first()
+    )
+    if not link:
+        raise HTTPException(
+            status_code=409,
+            detail="Complaint is not linked to an incident yet."
+        )
+
+    incident = db.query(models.Incident).filter(
+        models.Incident.id == link.incident_id
+    ).first()
+
+    if not incident:
+        raise HTTPException(
+            status_code=404,
+            detail="Linked incident not found."
+        )
+
+    return incident
+
+
+@router.patch("/{complaint_id}/status", response_model=schemas.Complaint)
+def update_case_status(
+    complaint_id: UUID,
+    payload: schemas.CaseStatusUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Move a complaint through the controlled case lifecycle."""
+    complaint = db.query(models.Complaint).filter(
+        models.Complaint.id == complaint_id
+    ).first()
+
+    if not complaint:
+        raise HTTPException(status_code=404, detail="Complaint not found.")
+
+    current_status = (complaint.status or "PENDING").upper()
+    new_status = payload.status.upper()
+
+    if new_status == current_status:
+        return complaint
+
+    allowed = CASE_STATUS_TRANSITIONS.get(current_status, set())
+    if new_status not in allowed:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Invalid case transition: {current_status} -> {new_status}."
+        )
+
+    complaint.status = new_status
+
+    event = models.ComplaintEvent(
+        complaint_id=complaint.id,
+        event_type="STATUS_CHANGED",
+        note=f"Case status changed from {current_status} to {new_status}.",
+    )
+    db.add(event)
+    db.commit()
+    db.refresh(complaint)
+
+    invalidate_user_dashboard(str(complaint.user_id))
+    return complaint
+
+
+@router.post("/{complaint_id}/outcome", response_model=schemas.CaseOutcome, status_code=201)
+def record_case_outcome(
+    complaint_id: UUID,
+    payload: schemas.OutcomeCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Record a human-reviewed outcome for the incident behind a complaint."""
+    complaint = db.query(models.Complaint).filter(
+        models.Complaint.id == complaint_id
+    ).first()
+
+    if not complaint:
+        raise HTTPException(status_code=404, detail="Complaint not found.")
+
+    # Final outcomes are case-review decisions, not ML predictions.
+    allowed_roles = {"ADMIN", "INVESTIGATOR", "MODERATOR"}
+    if (current_user.role or "CUSTOMER").upper() not in allowed_roles:
+        raise HTTPException(
+            status_code=403,
+            detail="Only an investigator, moderator, or admin can record a final outcome."
+        )
+
+    incident = _get_incident_for_complaint(db, complaint.id)
+
+    outcome = models.CaseOutcome(
+        incident_id=incident.id,
+        outcome=payload.outcome.upper(),
+        reason=payload.reason,
+        recorded_by=current_user.id,
+    )
+    db.add(outcome)
+    db.flush()
+
+    # The outcome belongs to the underlying incident, so synchronize all
+    # complaints linked to that incident with the final case outcome.
+    links = db.query(models.IncidentComplaint).filter(
+        models.IncidentComplaint.incident_id == incident.id
+    ).all()
+
+    for link in links:
+        linked_complaint = db.query(models.Complaint).filter(
+            models.Complaint.id == link.complaint_id
+        ).first()
+        if linked_complaint:
+            linked_complaint.status = payload.outcome.upper()
+            db.add(models.ComplaintEvent(
+                complaint_id=linked_complaint.id,
+                event_type="OUTCOME_RECORDED",
+                note=f"Incident outcome recorded as {payload.outcome.upper()}."
+                      + (f" Reason: {payload.reason}" if payload.reason else ""),
+            ))
+
+    db.commit()
+    db.refresh(outcome)
+
+    return outcome
+
+
+@router.get("/{complaint_id}/outcome", response_model=schemas.CaseOutcome)
+def get_latest_case_outcome(
+    complaint_id: UUID,
+    db: Session = Depends(get_db),
+):
+    """Return the latest outcome recorded for the complaint's incident."""
+    complaint = db.query(models.Complaint).filter(
+        models.Complaint.id == complaint_id
+    ).first()
+
+    if not complaint:
+        raise HTTPException(status_code=404, detail="Complaint not found.")
+
+    incident = _get_incident_for_complaint(db, complaint.id)
+
+    outcome = (
+        db.query(models.CaseOutcome)
+        .filter(models.CaseOutcome.incident_id == incident.id)
+        .order_by(models.CaseOutcome.created_at.desc())
+        .first()
+    )
+
+    if not outcome:
+        raise HTTPException(status_code=404, detail="No outcome recorded for this case yet.")
+
+    return outcome
+
+
 # ── POST /complaints/{id}/respond ─────────────────────────────────────────────
 @router.post("/{complaint_id}/respond", response_model=schemas.Response, status_code=201)
 def respond_to_complaint(

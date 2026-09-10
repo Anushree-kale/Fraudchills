@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, Field, field_validator, ConfigDict
-from typing import List, Optional
+from typing import List, Optional, Literal
 from datetime import datetime
 from uuid import UUID
 
@@ -194,6 +194,43 @@ class ComplaintSLA(BaseModel):
     )
 
 # Response Schemas
+class CaseStatusUpdate(BaseModel):
+    status: Literal[
+        "PENDING",
+        "UNDER_REVIEW",
+        "AWAITING_EVIDENCE",
+        "RESPONDED",
+        "RESOLVED",
+        "UNRESOLVED",
+        "INCONCLUSIVE",
+    ]
+
+
+class OutcomeCreate(BaseModel):
+    outcome: Literal["RESOLVED", "UNRESOLVED", "INCONCLUSIVE"]
+    reason: Optional[str] = None
+
+
+class CaseOutcome(BaseModel):
+    id: UUID
+    incident_id: UUID
+    outcome: str
+    reason: Optional[str] = None
+    recorded_by: str
+    created_at: datetime
+
+    @field_validator("recorded_by", mode="before")
+    @classmethod
+    def recorded_by_as_str(cls, v):
+        return str(v) if v is not None else v
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        alias_generator=to_camel,
+        populate_by_name=True,
+    )
+
+
 class ResponseBase(BaseModel):
     content: str
     complaint_id: UUID
@@ -309,9 +346,7 @@ class BrandProfile(BaseModel):
     )
 
 # Admin Schemas
-class StatusUpdate(BaseModel):
-    status: str
-
+class StatusUpdate(CaseStatusUpdate):
     model_config = ConfigDict(
         alias_generator=to_camel,
         populate_by_name=True,

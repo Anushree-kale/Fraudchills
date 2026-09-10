@@ -159,6 +159,33 @@ class IncidentComplaint(Base):
             name="incident_complaint_unique"
         ),
     )
+class CaseOutcome(Base):
+    """Historical outcome recorded for an underlying incident.
+
+    An incident may receive multiple outcome records over time as a case is
+    reviewed or new evidence changes the conclusion.
+    """
+
+    __tablename__ = "case_outcomes"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    incident_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("incidents.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    outcome = Column(String, nullable=False)
+    reason = Column(Text)
+    recorded_by = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id"),
+        nullable=False,
+        index=True,
+    )
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
 class Response(Base):
     __tablename__ = "responses"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
