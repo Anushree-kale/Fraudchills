@@ -1,3 +1,4 @@
+from services.incident_matching import find_or_create_incident
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
@@ -258,13 +259,20 @@ def create_complaint(
             deadline=deadline,
         )
         db.add(row)
+
         try:
             db.flush()
-            evt = models.ComplaintEvent(
-                complaint_id=row.id,
-                event_type="FILED",
-                note="Complaint filed by user.",
+            incident = find_or_create_incident(
+                db=db,
+                complaint=row,
             )
+
+
+            evt = models.ComplaintEvent(
+             complaint_id=row.id,
+             event_type="FILED",
+              note="Complaint filed by user.",
+    )
             db.add(evt)
             db.commit()
             db.refresh(row)
@@ -273,14 +281,6 @@ def create_complaint(
         except IntegrityError:
             db.rollback()
             complaint = None
-        except Exception:
-            db.rollback()
-            raise
-    if complaint is None:
-        raise HTTPException(
-            status_code=503,
-            detail="Could not allocate a unique case number. Please try again.",
-        )
     _ = time.time() - start_t
 
     invalidate_user_dashboard(str(current_user.id))

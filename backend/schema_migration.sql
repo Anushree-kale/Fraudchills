@@ -56,5 +56,67 @@ BEGIN
     ALTER TABLE brands ADD CONSTRAINT brands_claimed_by_fkey FOREIGN KEY (claimed_by) REFERENCES users(id);
   END IF;
 END $$;
+-- =========================================================
+-- INCIDENTS
+-- =========================================================
+
+CREATE TABLE IF NOT EXISTS incidents (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    brand_id UUID
+        REFERENCES brands(id),
+
+    order_id TEXT,
+
+    amount DOUBLE PRECISION DEFAULT 0.0,
+
+    occurred_at TIMESTAMPTZ,
+
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS ix_incidents_brand_id
+    ON incidents(brand_id);
+
+CREATE INDEX IF NOT EXISTS ix_incidents_order_id
+    ON incidents(order_id);
+
+CREATE INDEX IF NOT EXISTS ix_incidents_created_at
+    ON incidents(created_at);
+
+
+-- =========================================================
+-- INCIDENT ↔ COMPLAINT
+-- =========================================================
+
+CREATE TABLE IF NOT EXISTS incident_complaints (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    incident_id UUID NOT NULL
+        REFERENCES incidents(id)
+        ON DELETE CASCADE,
+
+    complaint_id UUID NOT NULL
+        REFERENCES complaints(id)
+        ON DELETE CASCADE,
+
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+
+    CONSTRAINT incident_complaint_unique
+        UNIQUE (incident_id, complaint_id),
+
+    CONSTRAINT one_incident_per_complaint
+        UNIQUE (complaint_id)
+);
+
+CREATE INDEX IF NOT EXISTS ix_incident_complaints_incident_id
+    ON incident_complaints(incident_id);
+
+CREATE INDEX IF NOT EXISTS ix_incident_complaints_complaint_id
+    ON incident_complaints(complaint_id);
+
+
 
 COMMIT;

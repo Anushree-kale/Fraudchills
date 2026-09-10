@@ -80,7 +80,85 @@ class ComplaintVote(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     __table_args__ = (UniqueConstraint("user_id", "complaint_id", name="user_complaint_vote_unique"),)
 
+class Incident(Base):
+    """
+    The underlying real-world event that one or more complaints refer to.
+    Multiple complaints can point to the same incident.
+    """
 
+    __tablename__ = "incidents"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    brand_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("brands.id"),
+        nullable=True,
+        index=True,
+    )
+
+    # Canonical information about the underlying incident
+    order_id = Column(String, index=True)
+    amount = Column(Float, default=0.0)
+
+    # When the underlying incident occurred, if known
+    occurred_at = Column(DateTime(timezone=True))
+
+    created_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        index=True,
+    )
+
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+class IncidentComplaint(Base):
+    """
+    Links a complaint to the underlying real-world incident.
+
+    One complaint belongs to one incident.
+    One incident can have multiple complaints.
+    """
+
+    __tablename__ = "incident_complaints"
+
+    id = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+
+    incident_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("incidents.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    complaint_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("complaints.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+
+    created_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "incident_id",
+            "complaint_id",
+            name="incident_complaint_unique"
+        ),
+    )
 class Response(Base):
     __tablename__ = "responses"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
