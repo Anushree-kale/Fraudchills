@@ -173,8 +173,13 @@ def generate_case_number(db: Session) -> str:
         return f"FC-{random.randint(1001, 9999)}"
 
 
-def calculate_risk_score(db: Session, payload: schemas.ComplaintCreate, current_user: models.User) -> float:
+def calculate_risk_score(
+    db: Session,
+    payload: schemas.ComplaintCreate,
+    current_user: models.User
+) -> float:
     """Calculate a rule-based risk score for a complaint."""
+
     # Base score from ML helper
     score = score_complaint(payload)
 
@@ -190,6 +195,7 @@ def calculate_risk_score(db: Session, payload: schemas.ComplaintCreate, current_
     platform_count = db.query(func.count(models.Complaint.id)).filter(
         models.Complaint.platform == payload.platform
     ).scalar()
+
     if platform_count > 5:
         score = min(100.0, score + 15.0)
 
@@ -197,11 +203,17 @@ def calculate_risk_score(db: Session, payload: schemas.ComplaintCreate, current_
     fraud_match = db.query(models.KnownFraudulentBrand).filter(
         models.KnownFraudulentBrand.name.ilike(payload.brand_name)
     ).first()
+
     if fraud_match:
         score = max(score, 95.0)
 
-    # User credibility score boost (column can be NULL in legacy rows)
-    cred = float(current_user.credibility_score) if current_user.credibility_score is not None else 50.0
+    # User credibility score boost
+    cred = (
+        float(current_user.credibility_score)
+        if current_user.credibility_score is not None
+        else 50.0
+    )
+
     user_cred_modifier = (cred - 50) / 10
     score -= user_cred_modifier
 
@@ -216,32 +228,73 @@ def create_complaint(
     current_user: models.User = Depends(get_current_user),
 ):
     """Submit a new complaint. Automatically ML-scored on creation."""
+
     import time
     start_t = time.time()
 
     # ── Spam Prevention ────────────────────────────────────────────────────────
+
     # 1. Rate limiting: 10 per 24h
     last_24h = _utc_now() - timedelta(days=1)
+
     daily_count = db.query(func.count(models.Complaint.id)).filter(
         models.Complaint.user_id == current_user.id,
         models.Complaint.created_at >= last_24h
     ).scalar()
 
     if daily_count >= 10:
-        raise HTTPException(status_code=429, detail="Daily limit reached (10 complaints per 24h).")
+        raise HTTPException(
+            status_code=429,
+            detail="Daily limit reached (10 complaints per 24h)."
+        )
 
-    # 2. Duplicate detection (Similarity > 0.85)
-    is_duplicate = check_duplicate_complaint(db, current_user.id, payload.brand_name, payload.details)
+    # 2. Duplicate detection
+    is_duplicate = check_duplicate_complaint(
+        db,
+        current_user.id,
+        payload.brand_name,
+        payload.details
+    )
+
     if is_duplicate:
-        raise HTTPException(status_code=400, detail="Duplicate complaint detected (similar details filed recently).")
+        raise HTTPException(
+            status_code=400,
+            detail="Duplicate complaint detected "
+                   "(similar details filed recently)."
+        )
+
+    # ── Resolve brand name to existing Brand ──────────────────────────────────
+    #
+    # IMPORTANT:
+    # We do NOT automatically create a Brand from user input.
+    # If the brand already exists, attach its canonical ID.
+    # If it does not exist, keep brand_id as None.
+    #
+    # This allows incident matching to work for known brands while
+    # preventing arbitrary users from creating junk Brand records.
+
+    brand = db.query(models.Brand).filter(
+        func.lower(func.trim(models.Brand.name))
+        == func.lower(func.trim(payload.brand_name))
+    ).first()
+
+    brand_id = brand.id if brand else None
 
     # ── Rule-Based Risk Scoring ───────────────────────────────────────────────
-    score = calculate_risk_score(db, payload, current_user)
+    score = calculate_risk_score(
+        db,
+        payload,
+        current_user
+    )
 
     deadline = _utc_now() + timedelta(days=7)
+
     complaint: models.Complaint | None = None
+
     for _ in range(12):
+
         case_num = generate_case_number(db)
+
         row = models.Complaint(
             case_number=case_num,
             type=payload.type.upper(),
@@ -250,6 +303,11 @@ def create_complaint(
             order_id=payload.order_id,
             amount=payload.amount,
             brand_name=payload.brand_name,
+
+            # FIX:
+            # Store the canonical Brand ID when the brand exists.
+            brand_id=brand_id,
+
             proof_urls=payload.proof_urls or [],
             external_links=payload.external_links or [],
             image_url=payload.image_url,
@@ -258,35 +316,56 @@ def create_complaint(
             status="PENDING",
             deadline=deadline,
         )
+
         db.add(row)
 
         try:
+            # Flush complaint first so row.id exists
             db.flush()
+
+            # ── Incident linking ──────────────────────────────────────────────
+            #
+            # The matching service now receives a complaint containing
+            # the resolved brand_id + order_id.
+            #
+            # Same brand + same order ID => same Incident.
+            # Different order ID => different Incident.
+
             incident = find_or_create_incident(
                 db=db,
                 complaint=row,
             )
 
-
+            # ── Complaint timeline ────────────────────────────────────────────
             evt = models.ComplaintEvent(
-             complaint_id=row.id,
-             event_type="FILED",
-              note="Complaint filed by user.",
-    )
+                complaint_id=row.id,
+                event_type="FILED",
+                note="Complaint filed by user.",
+            )
+
             db.add(evt)
+
             db.commit()
             db.refresh(row)
+
             complaint = row
             break
+
         except IntegrityError:
             db.rollback()
             complaint = None
+
     _ = time.time() - start_t
 
     invalidate_user_dashboard(str(current_user.id))
 
-    return schemas.Complaint.model_validate(complaint)
+    if complaint is None:
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to create complaint after multiple attempts."
+        )
 
+    return schemas.Complaint.model_validate(complaint)
 
 # ── POST /complaints/{id}/respond ─────────────────────────────────────────────
 @router.post("/{complaint_id}/respond", response_model=schemas.Response, status_code=201)
